@@ -240,6 +240,7 @@ func around(x, y, rad int, apply func(int, int)) {
 }
 
 func cross(x, y, dist int, apply func(int, int)) {
+	// (x,y) and to the right
 	for i := x; i < min(x+dist, len(board)); i++ {
 		if board[i][y] == Wall {
 			break
@@ -247,6 +248,7 @@ func cross(x, y, dist int, apply func(int, int)) {
 		apply(i, y)
 	}
 
+	// left of (x,y)
 	for i := x - 1; i > max(x-dist, 0); i-- {
 		if board[i][y] == Wall {
 			break
@@ -254,6 +256,7 @@ func cross(x, y, dist int, apply func(int, int)) {
 		apply(i, y)
 	}
 
+	// below (x,y)
 	for j := y + 1; j < min(y+dist, len(board)); j++ {
 		if board[x][j] == Wall {
 			break
@@ -261,6 +264,7 @@ func cross(x, y, dist int, apply func(int, int)) {
 		apply(x, j)
 	}
 
+	// above (x,y)
 	for j := y - 1; j > max(y-dist, 0); j-- {
 		if board[x][j] == Wall {
 			break
