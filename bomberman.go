@@ -172,7 +172,7 @@ func placeBomb() {
 
 func explode(x int, y int) {
 	board[x][y] = Ground
-	around(x, y, 2, func(cell termbox.Cell) termbox.Cell {
+	cross(x, y, 3, func(cell termbox.Cell) termbox.Cell {
 		if cell == Rock {
 			return Ground
 		}
@@ -180,24 +180,63 @@ func explode(x int, y int) {
 	})
 }
 
+func min(n, m int) int {
+	if n < m {
+		return n
+	}
+	return m
+}
+
+func max(n, m int) int {
+	if n > m {
+		return n
+	}
+	return m
+}
+
 func around(x, y, rad int, apply func(termbox.Cell) termbox.Cell) {
-	min := func(n, m int) int {
-		if n < m {
-			return n
-		}
-		return m
-	}
-
-	max := func(n, m int) int {
-		if n > m {
-			return n
-		}
-		return m
-	}
-
 	for i := max(x-rad, 0); i < min(x+rad, len(board)); i++ {
 		for j := max(y-rad, 0); j < min(y+rad, len(board[0])); j++ {
 			board[i][j] = apply(board[i][j])
 		}
+	}
+}
+
+func cross(x, y, dist int, apply func(termbox.Cell) termbox.Cell) {
+	for i := x; i < min(x+dist, len(board)); i++ {
+		if board[i][y] == Wall {
+			break
+		}
+
+		if i != x {
+			board[i][y] = apply(board[i][y])
+		}
+	}
+
+	for i := x; i > max(x-dist, 0); i-- {
+		if board[i][y] == Wall {
+			break
+		}
+
+		if i != x {
+			board[i][y] = apply(board[i][y])
+		}
+	}
+
+	for j := y; j < min(y+dist, len(board)); j++ {
+		if board[x][j] == Wall {
+			break
+		}
+
+		if j != y {
+			board[x][j] = apply(board[x][j])
+		}
+	}
+
+	for j := y; j > max(y+dist, 0); j-- {
+		if board[x][j] == Wall {
+			break
+		}
+		board[x][j] = apply(board[x][j])
 	}
 }
