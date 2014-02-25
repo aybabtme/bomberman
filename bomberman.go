@@ -162,7 +162,10 @@ func move(key termbox.Key) {
 
 func canMove(x, y int) bool {
 	switch board[x][y] {
-	case Ground, Flame:
+	case Ground:
+		return true
+	case Flame:
+		done = true
 		return true
 	}
 	return false
