@@ -134,7 +134,7 @@ func doKey(key termbox.Key) {
 		termbox.KeyArrowLeft,
 		termbox.KeyArrowRight:
 		move(key)
-	case termbox.KeyEnter:
+	case termbox.KeySpace:
 		placeBomb()
 	}
 }
