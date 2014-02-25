@@ -29,6 +29,12 @@ var (
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorMagenta,
 	}
+
+	Bomb = termbox.Cell{
+		Ch: 'ß',
+		Fg: termbox.ColorRed,
+		Bg: termbox.ColorDefault,
+	}
 )
 
 var (
@@ -92,7 +98,7 @@ func main() {
 			case termbox.EventError:
 				done = true
 			case termbox.EventKey:
-				move(ev.Key)
+				doKey(ev.Key)
 				draw()
 			}
 		}
@@ -110,6 +116,19 @@ func draw() {
 	termbox.SetCell(x*2, y, Player.Ch, Player.Fg, Player.Bg)
 	termbox.SetCell(x*2+1, y, Player.Ch, Player.Fg, Player.Bg)
 	termbox.Flush()
+}
+
+func doKey(key termbox.Key) {
+	switch key {
+	case termbox.KeyCtrlC,
+		termbox.KeyArrowUp,
+		termbox.KeyArrowDown,
+		termbox.KeyArrowLeft,
+		termbox.KeyArrowRight:
+		move(key)
+	case termbox.KeyEnter:
+		placeBomb()
+	}
 }
 
 func move(key termbox.Key) {
@@ -139,6 +158,26 @@ func canMove(x, y int) bool {
 		return true
 	}
 	return false
+}
+
+func placeBomb() {
+	board[x][y] = Bomb
+	tmpX, tmpY := x, y
+
+	time.AfterFunc(time.Second*3, func() {
+		explode(tmpX, tmpY)
+		draw()
+	})
+}
+
+func explode(x int, y int) {
+	board[x][y] = Ground
+	around(x, y, 2, func(cell termbox.Cell) termbox.Cell {
+		if cell == Rock {
+			return Ground
+		}
+		return cell
+	})
 }
 
 func around(x, y, rad int, apply func(termbox.Cell) termbox.Cell) {
