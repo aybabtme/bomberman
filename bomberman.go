@@ -35,6 +35,12 @@ var (
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
+
+	Flame = termbox.Cell{
+		Ch: '+',
+		Fg: termbox.ColorRed,
+		Bg: termbox.ColorDefault,
+	}
 )
 
 var (
@@ -45,7 +51,10 @@ var (
 	lastX, lastY int
 	h, w         int
 
-	done = false
+	blastRadius = 3
+
+	canPlaceBomb = true
+	done         = false
 )
 
 func setupBoard() {
@@ -64,11 +73,10 @@ func setupBoard() {
 		}
 	}
 
-	around(x, y, 3, func(in termbox.Cell) termbox.Cell {
-		if in == Rock {
-			return Ground
+	around(x, y, 3, func(cellX, cellY int) {
+		if board[cellX][cellY] == Rock {
+			board[cellX][cellY] = Ground
 		}
-		return in
 	})
 }
 
@@ -154,29 +162,55 @@ func move(key termbox.Key) {
 
 func canMove(x, y int) bool {
 	switch board[x][y] {
-	case Ground:
+	case Ground, Flame:
 		return true
 	}
 	return false
 }
 
 func placeBomb() {
+	if canPlaceBomb {
+		canPlaceBomb = false
+	} else {
+		return
+	}
+
 	board[x][y] = Bomb
 	tmpX, tmpY := x, y
 
-	time.AfterFunc(time.Second*3, func() {
+	time.AfterFunc(time.Second*2, func() {
 		explode(tmpX, tmpY)
 		draw()
+
+		time.AfterFunc(time.Millisecond*700, func() {
+			removeFlame(tmpX, tmpY)
+			draw()
+		})
+	})
+
+	time.AfterFunc(time.Millisecond*2500, func() {
+		canPlaceBomb = true
 	})
 }
 
-func explode(x int, y int) {
-	board[x][y] = Ground
-	cross(x, y, 3, func(cell termbox.Cell) termbox.Cell {
-		if cell == Rock {
-			return Ground
+func explode(eplodeX, eplodeY int) {
+	board[eplodeX][eplodeY] = Ground
+	cross(eplodeX, eplodeY, blastRadius, func(cellX, cellY int) {
+		if cellX == x && cellY == y {
+			done = true
 		}
-		return cell
+
+		if board[cellX][cellY] != Wall {
+			board[cellX][cellY] = Flame
+		}
+	})
+}
+
+func removeFlame(x, y int) {
+	cross(x, y, blastRadius, func(cellX, cellY int) {
+		if board[cellX][cellY] == Flame {
+			board[cellX][cellY] = Ground
+		}
 	})
 }
 
@@ -194,49 +228,40 @@ func max(n, m int) int {
 	return m
 }
 
-func around(x, y, rad int, apply func(termbox.Cell) termbox.Cell) {
+func around(x, y, rad int, apply func(int, int)) {
 	for i := max(x-rad, 0); i < min(x+rad, len(board)); i++ {
 		for j := max(y-rad, 0); j < min(y+rad, len(board[0])); j++ {
-			board[i][j] = apply(board[i][j])
+			apply(i, j)
 		}
 	}
 }
 
-func cross(x, y, dist int, apply func(termbox.Cell) termbox.Cell) {
+func cross(x, y, dist int, apply func(int, int)) {
 	for i := x; i < min(x+dist, len(board)); i++ {
 		if board[i][y] == Wall {
 			break
 		}
-
-		if i != x {
-			board[i][y] = apply(board[i][y])
-		}
+		apply(i, y)
 	}
 
-	for i := x; i > max(x-dist, 0); i-- {
+	for i := x - 1; i > max(x-dist, 0); i-- {
 		if board[i][y] == Wall {
 			break
 		}
-
-		if i != x {
-			board[i][y] = apply(board[i][y])
-		}
+		apply(i, y)
 	}
 
-	for j := y; j < min(y+dist, len(board)); j++ {
+	for j := y + 1; j < min(y+dist, len(board)); j++ {
 		if board[x][j] == Wall {
 			break
 		}
-
-		if j != y {
-			board[x][j] = apply(board[x][j])
-		}
+		apply(x, j)
 	}
 
-	for j := y; j > max(y+dist, 0); j-- {
+	for j := y - 1; j > max(y-dist, 0); j-- {
 		if board[x][j] == Wall {
 			break
 		}
-		board[x][j] = apply(board[x][j])
+		apply(x, j)
 	}
 }
