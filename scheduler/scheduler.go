@@ -42,10 +42,12 @@ func (s *Scheduler) HasNext() bool {
 // are removed.
 func (s *Scheduler) NextTurn() {
 	s.now++
-	for i := range s.current {
-		s.current[i] = nil
+	if len(s.current) != 0 {
+		for i := range s.current {
+			s.current[i] = nil
+		}
+		s.current = s.current[:0]
 	}
-	s.current = s.current[:0]
 
 	if s.events.Empty() {
 		return
