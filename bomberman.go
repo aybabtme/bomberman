@@ -1,51 +1,69 @@
 package main
 
 import (
+	"github.com/aybabtme/bomberman/logger"
+	"github.com/aybabtme/bomberman/scheduler"
 	"github.com/nsf/termbox-go"
 	"time"
 )
 
 var (
-	Wall = termbox.Cell{
+	Wall = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorGreen,
 		Bg: termbox.ColorBlack,
 	}
 
-	Rock = termbox.Cell{
+	Rock = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorYellow,
 		Bg: termbox.ColorBlack,
 	}
 
-	Ground = termbox.Cell{
+	Ground = &termbox.Cell{
 		Ch: ' ',
 		Fg: termbox.ColorDefault,
 		Bg: termbox.ColorDefault,
 	}
 
-	Player = termbox.Cell{
+	Player = &termbox.Cell{
 		Ch: '♨',
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorMagenta,
 	}
 
-	Bomb = termbox.Cell{
+	Bomb = &termbox.Cell{
 		Ch: 'ß',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
 
-	Flame = termbox.Cell{
+	Flame = &termbox.Cell{
 		Ch: '+',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
 )
 
+type BomberAction struct {
+	name     string
+	duration int
+	doTurn   func(turn int) error
+}
+
+func (a *BomberAction) Duration() int {
+	return a.duration
+}
+
 var (
-	turn  = time.Millisecond * 10
-	board [81][25]termbox.Cell
+	log = logger.New("", "bomb.log", logger.Debug)
+
+	schedule     = scheduler.NewScheduler()
+	turnDuration = time.Millisecond * 10
+	turnTick     = time.NewTicker(turnDuration)
+	done         = false
+
+	board [81][25]*termbox.Cell
 
 	x, y         int = 1, 1
 	lastX, lastY int
@@ -54,10 +72,10 @@ var (
 	blastRadius = 3
 
 	canPlaceBomb = true
-	done         = false
 )
 
 func setupBoard() {
+	log.Debugf("Setup board")
 	for i := 0; i < len(board); i++ {
 		for j := 0; j < len(board[0]); j++ {
 			switch {
@@ -78,9 +96,11 @@ func setupBoard() {
 			board[cellX][cellY] = Ground
 		}
 	})
+	log.Debugf("Setup board done.")
 }
 
 func main() {
+	log.Debugf("Starting.")
 	setupBoard()
 	if err := termbox.Init(); err != nil {
 		panic(err)
@@ -90,14 +110,21 @@ func main() {
 	evChan := make(chan termbox.Event)
 
 	go func() {
+		log.Debugf("Polling events.")
 		for {
-			evChan <- termbox.PollEvent()
+			ev := termbox.PollEvent()
+			evChan <- ev
 		}
 	}()
 
 	w, h = termbox.Size()
+	log.Debugf("Drawing for first time.")
 	draw()
-	for !done {
+
+	for _ = range turnTick.C {
+		if done {
+			return
+		}
 		select {
 		case ev := <-evChan:
 			switch ev.Type {
@@ -107,10 +134,22 @@ func main() {
 				done = true
 			case termbox.EventKey:
 				doKey(ev.Key)
-				draw()
 			}
+		default:
 		}
+
+		if schedule.HasNext() {
+			schedule.NextTurn()
+			schedule.DoTurn(func(a scheduler.Action, turn int) error {
+				act := a.(*BomberAction)
+				log.Debugf("Doing action '%s', turn %d/%d", act.name, turn, act.Duration())
+				return act.doTurn(turn)
+			})
+		}
+
+		draw()
 	}
+
 }
 
 func draw() {
@@ -172,28 +211,77 @@ func canMove(x, y int) bool {
 }
 
 func placeBomb() {
+	log.Debugf("Attempting to place bomb.")
 	if canPlaceBomb {
 		canPlaceBomb = false
 	} else {
+		log.Debugf("Failed.")
 		return
 	}
 
 	board[x][y] = Bomb
 	tmpX, tmpY := x, y
 
-	time.AfterFunc(time.Second*2, func() {
-		explode(tmpX, tmpY)
-		draw()
-
-		time.AfterFunc(time.Millisecond*700, func() {
-			removeFlame(tmpX, tmpY)
-			draw()
-		})
-	})
-
-	time.AfterFunc(time.Millisecond*2500, func() {
+	allowBombs := func(turn int) error {
 		canPlaceBomb = true
-	})
+		return nil
+	}
+
+	doFlameout := func(turn int) error {
+		log.Debugf("Flameout.")
+		removeFlame(tmpX, tmpY)
+
+		return nil
+	}
+
+	doExplosion := func(turn int) error {
+		log.Debugf("Exploding.")
+		if turn == 0 {
+
+			explode(tmpX, tmpY)
+			log.Debugf("Registering flameout.")
+			schedule.Register(&BomberAction{
+				name:     "doFlameout",
+				duration: 1,
+				doTurn:   doFlameout,
+			}, 70)
+
+			log.Debugf("Registering bomb allowance.")
+			schedule.Register(&BomberAction{
+				name:     "allowBombs",
+				duration: 1,
+				doTurn:   allowBombs,
+			}, 250)
+		}
+
+		switch turn % 4 {
+		case 0:
+			Flame.Ch = 'x'
+			Flame.Fg = termbox.ColorYellow
+			Flame.Bg = termbox.ColorWhite
+		case 1:
+			Flame.Ch = '*'
+			Flame.Fg = termbox.ColorYellow
+			Flame.Bg = termbox.ColorBlack
+		case 2:
+			Flame.Ch = '+'
+			Flame.Fg = termbox.ColorRed
+			Flame.Bg = termbox.ColorYellow
+		case 3:
+			Flame.Ch = '*'
+			Flame.Fg = termbox.ColorRed
+			Flame.Bg = termbox.ColorBlack
+		}
+
+		return nil
+	}
+
+	log.Debugf("Registering explosion.")
+	schedule.Register(&BomberAction{
+		name:     "doExplosion",
+		duration: 70,
+		doTurn:   doExplosion,
+	}, 200)
 }
 
 func explode(eplodeX, eplodeY int) {
