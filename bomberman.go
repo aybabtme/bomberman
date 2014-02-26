@@ -8,37 +8,37 @@ import (
 )
 
 var (
-	Wall = termbox.Cell{
+	Wall = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorGreen,
 		Bg: termbox.ColorBlack,
 	}
 
-	Rock = termbox.Cell{
+	Rock = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorYellow,
 		Bg: termbox.ColorBlack,
 	}
 
-	Ground = termbox.Cell{
+	Ground = &termbox.Cell{
 		Ch: ' ',
 		Fg: termbox.ColorDefault,
 		Bg: termbox.ColorDefault,
 	}
 
-	Player = termbox.Cell{
+	Player = &termbox.Cell{
 		Ch: '♨',
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorMagenta,
 	}
 
-	Bomb = termbox.Cell{
+	Bomb = &termbox.Cell{
 		Ch: 'ß',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
 
-	Flame = termbox.Cell{
+	Flame = &termbox.Cell{
 		Ch: '+',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
@@ -63,7 +63,7 @@ var (
 	turnTick     = time.NewTicker(turnDuration)
 	done         = false
 
-	board [81][25]termbox.Cell
+	board [81][25]*termbox.Cell
 
 	x, y         int = 1, 1
 	lastX, lastY int
@@ -142,7 +142,7 @@ func main() {
 			schedule.NextTurn()
 			schedule.DoTurn(func(a scheduler.Action, turn int) error {
 				act := a.(*BomberAction)
-				log.Debugf("Doing action '%s', turn %d", act.name, turn)
+				log.Debugf("Doing action '%s', turn %d/%d", act.name, turn, act.Duration())
 				return act.doTurn(turn)
 			})
 		}
@@ -230,32 +230,56 @@ func placeBomb() {
 	doFlameout := func(turn int) error {
 		log.Debugf("Flameout.")
 		removeFlame(tmpX, tmpY)
+
 		return nil
 	}
 
 	doExplosion := func(turn int) error {
 		log.Debugf("Exploding.")
-		explode(tmpX, tmpY)
-		log.Debugf("Registering flameout.")
-		schedule.Register(&BomberAction{
-			name:     "doFlameout",
-			duration: 1,
-			doTurn:   doFlameout,
-		}, 70)
+		if turn == 0 {
 
-		log.Debugf("Registering bomb allowance.")
-		schedule.Register(&BomberAction{
-			name:     "allowBombs",
-			duration: 1,
-			doTurn:   allowBombs,
-		}, 250)
+			explode(tmpX, tmpY)
+			log.Debugf("Registering flameout.")
+			schedule.Register(&BomberAction{
+				name:     "doFlameout",
+				duration: 1,
+				doTurn:   doFlameout,
+			}, 70)
+
+			log.Debugf("Registering bomb allowance.")
+			schedule.Register(&BomberAction{
+				name:     "allowBombs",
+				duration: 1,
+				doTurn:   allowBombs,
+			}, 250)
+		}
+
+		switch turn % 4 {
+		case 0:
+			Flame.Ch = 'x'
+			Flame.Fg = termbox.ColorYellow
+			Flame.Bg = termbox.ColorWhite
+		case 1:
+			Flame.Ch = '*'
+			Flame.Fg = termbox.ColorYellow
+			Flame.Bg = termbox.ColorBlack
+		case 2:
+			Flame.Ch = '+'
+			Flame.Fg = termbox.ColorRed
+			Flame.Bg = termbox.ColorYellow
+		case 3:
+			Flame.Ch = '*'
+			Flame.Fg = termbox.ColorRed
+			Flame.Bg = termbox.ColorBlack
+		}
+
 		return nil
 	}
 
 	log.Debugf("Registering explosion.")
 	schedule.Register(&BomberAction{
 		name:     "doExplosion",
-		duration: 1,
+		duration: 70,
 		doTurn:   doExplosion,
 	}, 200)
 }

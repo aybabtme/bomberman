@@ -77,6 +77,7 @@ func (s *Scheduler) DoTurn(eachAction func(a Action, delta int) error) error {
 
 		ev.TurnsDone++
 		if ev.TurnsDone < ev.Action.Duration() {
+			ev.Stamp = s.now + 1
 			heap.Push(s.events, ev)
 		}
 	}
