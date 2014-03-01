@@ -4,6 +4,7 @@ import (
 	"github.com/aybabtme/bomberman/logger"
 	"github.com/aybabtme/bomberman/scheduler"
 	"github.com/nsf/termbox-go"
+	"math/rand"
 	"time"
 )
 
@@ -71,7 +72,8 @@ var (
 
 	blastRadius = 3
 
-	canPlaceBomb = true
+	canPlaceBomb   = true
+	wallPercentage = 50
 )
 
 func setupBoard() {
@@ -86,7 +88,11 @@ func setupBoard() {
 			case j%2 == 0 && i%2 == 0:
 				board[i][j] = Wall
 			default:
-				board[i][j] = Rock
+				if rand.Intn(100) < 100-wallPercentage {
+					board[i][j] = Ground
+				} else {
+					board[i][j] = Rock
+				}
 			}
 		}
 	}
@@ -359,4 +365,8 @@ func cross(x, y, dist int, apply func(int, int)) {
 		}
 		apply(x, j)
 	}
+}
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
 }
