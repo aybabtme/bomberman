@@ -43,6 +43,12 @@ var (
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
+
+	Fog = &termbox.Cell{
+		Ch: '/',
+		Fg: termbox.ColorWhite,
+		Bg: termbox.ColorDefault,
+	}
 )
 
 type BomberAction struct {
@@ -72,6 +78,7 @@ var (
 	blastRadius = 3
 
 	canPlaceBomb = true
+	showFog      = false
 )
 
 func setupBoard() {
@@ -152,12 +159,27 @@ func main() {
 
 }
 
+func isInFog(s, t int) bool {
+	isFog := true
+	around(x, y, 3, func(i, j int) {
+		if s == i && t == j {
+			isFog = false
+		}
+	})
+	return isFog
+}
+
 func draw() {
 	for i := 0; i < len(board); i++ {
 		for j := 0; j < len(board[0]); j++ {
-			cell := board[i][j]
-			termbox.SetCell(i*2, j, cell.Ch, cell.Fg, cell.Bg)
-			termbox.SetCell(i*2+1, j, cell.Ch, cell.Fg, cell.Bg)
+			if showFog && isInFog(i, j) {
+				termbox.SetCell(i*2, j, Fog.Ch, Fog.Fg, Fog.Bg)
+				termbox.SetCell(i*2+1, j, Fog.Ch, Fog.Fg, Fog.Bg)
+			} else {
+				cell := board[i][j]
+				termbox.SetCell(i*2, j, cell.Ch, cell.Fg, cell.Bg)
+				termbox.SetCell(i*2+1, j, cell.Ch, cell.Fg, cell.Bg)
+			}
 		}
 	}
 	termbox.SetCell(x*2, y, Player.Ch, Player.Fg, Player.Bg)
