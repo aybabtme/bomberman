@@ -90,7 +90,7 @@ var (
 		Bombs:    0,
 		MaxBomb:  DefaultMaxBomb,
 		MaxRange: DefaultBombRadius,
-		Alive:    false,
+		Alive:    true,
 	}
 
 	rightTopCorner = PlayerState{
@@ -130,6 +130,7 @@ func main() {
 	players := map[*PlayerState]Player{
 		&leftTopCorner:     localPlayer,
 		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
+		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
 	}
 
 	log.Debugf("Setup board.")
@@ -175,11 +176,9 @@ func main() {
 		board.draw(players)
 		updatePlayers(players, board)
 
-		// Assume we're done
 		alives := []Player{}
 		for state, player := range players {
 			if state.Alive {
-				// Unless one player's alive (TODO should be two players)
 				alives = append(alives, player)
 			}
 		}
@@ -255,7 +254,6 @@ func applyPlayerMoves(players map[*PlayerState]Player, board *Board) {
 			case m := <-player.Move():
 				move(board, players, state, m)
 			default:
-				log.Infof("[%s] Has not provided any move.", player.Name())
 			}
 		}
 	}
@@ -267,7 +265,6 @@ func updatePlayers(players map[*PlayerState]Player, board *Board) {
 		select {
 		case player.Update() <- *state:
 		default:
-			log.Infof("[%s] Not ready to receive update.", player.Name())
 		}
 	}
 }
@@ -308,18 +305,29 @@ func move(board *Board, states map[*PlayerState]Player, state *PlayerState, acti
 		placeBomb(board, states, state)
 	}
 
-	if canMove(board, state, nextX, nextY) {
-		state.X, state.Y = nextX, nextY
+	if !traversable(board, states, nextX, nextY) {
+		return
 	}
+
+	if board[nextX][nextY] == FlameCell {
+		state.Alive = false
+		log.Errorf("[%s] Died moving into flame.", state.Name)
+	}
+	state.X, state.Y = nextX, nextY
 }
 
-func canMove(board *Board, state *PlayerState, x, y int) bool {
+func traversable(board *Board, states map[*PlayerState]Player, x, y int) bool {
+	// Can't walk were other players are
+	for state := range states {
+		if state.X == x && state.Y == y {
+			return false
+		}
+	}
+
 	switch board[x][y] {
 	case GroundCell:
 		return true
 	case FlameCell:
-		state.Alive = false
-		log.Errorf("[%s] Died moving into flame.", state.Name)
 		return true
 	}
 	return false

@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand"
+	"time"
 )
 
 type PlayerState struct {
@@ -51,7 +52,6 @@ func NewInputPlayer(state PlayerState, input <-chan PlayerMove) Player {
 			case move := <-i.inMove:
 				i.forwardMove(move)
 			case i.state = <-i.update:
-				log.Debugf("[%s] New state.", i.Name())
 			}
 		}
 	}()
@@ -99,7 +99,7 @@ func NewRandomPlayer(state PlayerState, seed int64) *RandomPlayer {
 		rnd := rand.New(rand.NewSource(seed))
 		for {
 			var m PlayerMove
-			switch rnd.Intn(5) {
+			switch n := rnd.Intn(10); n {
 			case 0:
 				m = Up
 			case 1:
@@ -110,8 +110,9 @@ func NewRandomPlayer(state PlayerState, seed int64) *RandomPlayer {
 				m = Right
 			case 4:
 				m = PutBomb
+			default:
+				time.Sleep(time.Duration(n) * TurnDuration)
 			}
-			log.Debugf("[%s] Move: %s", r.state.Name, m)
 			r.outMove <- m
 		}
 	}()
@@ -119,14 +120,63 @@ func NewRandomPlayer(state PlayerState, seed int64) *RandomPlayer {
 	return r
 }
 
-func (i *RandomPlayer) Name() string {
-	return i.state.Name
+func (r *RandomPlayer) Name() string {
+	return r.state.Name
 }
 
-func (i *RandomPlayer) Move() <-chan PlayerMove {
-	return i.outMove
+func (r *RandomPlayer) Move() <-chan PlayerMove {
+	return r.outMove
 }
 
-func (i *RandomPlayer) Update() chan<- PlayerState {
-	return i.update
+func (r *RandomPlayer) Update() chan<- PlayerState {
+	return r.update
+}
+
+type WanderingPlayer struct {
+	state   PlayerState
+	update  chan PlayerState
+	outMove chan PlayerMove
+}
+
+func NewWanderingPlayer(state PlayerState, seed int64) *WanderingPlayer {
+	w := &WanderingPlayer{
+		state:   state,
+		update:  make(chan PlayerState),
+		outMove: make(chan PlayerMove, 1),
+	}
+
+	go func() {
+		rnd := rand.New(rand.NewSource(seed))
+		for {
+			var m PlayerMove
+
+			switch n := rnd.Intn(10); n {
+			case 0:
+				m = Up
+			case 1:
+				m = Down
+			case 2:
+				m = Left
+			case 3:
+				m = Right
+			default:
+				time.Sleep(time.Duration(n) * TurnDuration)
+			}
+			w.outMove <- m
+		}
+	}()
+
+	return w
+}
+
+func (w *WanderingPlayer) Name() string {
+	return w.state.Name
+}
+
+func (w *WanderingPlayer) Move() <-chan PlayerMove {
+	return w.outMove
+}
+
+func (w *WanderingPlayer) Update() chan<- PlayerState {
+	return w.update
 }
