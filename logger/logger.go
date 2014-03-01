@@ -34,41 +34,38 @@ func New(prefix, filename string, lvl Level) *logger {
 }
 
 func (l *logger) Debugf(msg string, arg ...interface{}) {
-	if l.lvl < Debug {
+	if l.lvl > Debug {
 		return
 	}
 	l.l.Printf("[Debug] "+msg, arg...)
 }
 
 func (l *logger) Infof(msg string, arg ...interface{}) {
-	if l.lvl < Info {
+	if l.lvl > Info {
 		return
 	}
 	l.l.Printf("[Info] "+msg, arg...)
 }
 func (l *logger) Warnf(msg string, arg ...interface{}) {
-	if l.lvl < Warn {
+	if l.lvl > Warn {
 		return
 	}
 	l.l.Printf("[Warn] "+msg, arg...)
 }
 func (l *logger) Errorf(msg string, arg ...interface{}) {
-	if l.lvl < Error {
+	if l.lvl > Error {
 		return
 	}
 	l.l.Printf("[Error] "+msg, arg...)
 }
 
 func (l *logger) Fatalf(msg string, arg ...interface{}) {
-	if l.lvl < Fatal {
+	if l.lvl > Fatal {
 		return
 	}
 	l.l.Fatalf("[Fatal] "+msg, arg...)
 }
 
 func (l *logger) Panicf(msg string, arg ...interface{}) {
-	if l.lvl < Panic {
-		return
-	}
 	l.l.Panicf("[Panic] "+msg, arg...)
 }
