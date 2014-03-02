@@ -25,7 +25,6 @@ func placeBomb(board *Board, states map[*PlayerState]Player, placerState *Player
 	radius := placerState.MaxRange
 
 	board[x][y] = BombCell
-	tmpX, tmpY := x, y
 
 	replenishBomb := func(turn int) error {
 		if placerState.Bombs > 0 {
@@ -38,14 +37,14 @@ func placeBomb(board *Board, states map[*PlayerState]Player, placerState *Player
 
 	doFlameout := func(turn int) error {
 		log.Debugf("[%s] Bomb flameout.", placer.Name())
-		removeFlame(board, tmpX, tmpY, radius)
+		removeFlame(board, x, y, radius)
 		return nil
 	}
 
 	doExplosion := func(turn int) error {
 		log.Debugf("[%s] Bomb exploding.", placer.Name())
 
-		explode(states, board, tmpX, tmpY, radius)
+		explode(states, board, x, y, radius)
 
 		log.Debugf("[%s] Registering flameout.", placer.Name())
 		schedule.Register(&BomberAction{

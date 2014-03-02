@@ -311,23 +311,14 @@ func move(board *Board, states map[*PlayerState]Player, state *PlayerState, acti
 
 	if board[nextX][nextY] == FlameCell {
 		state.Alive = false
-		log.Errorf("[%s] Died moving into flame.", state.Name)
+		log.Infof("[%s] Died moving into flame.", state.Name)
 	}
 	state.X, state.Y = nextX, nextY
 }
 
 func traversable(board *Board, states map[*PlayerState]Player, x, y int) bool {
-	// Can't walk were other players are
-	for state := range states {
-		if state.X == x && state.Y == y {
-			return false
-		}
-	}
-
 	switch board[x][y] {
-	case GroundCell:
-		return true
-	case FlameCell:
+	case GroundCell, FlameCell:
 		return true
 	}
 	return false
