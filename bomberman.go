@@ -17,8 +17,11 @@ const (
 	MaxY           = 21
 	WallPercentage = 50
 
+	TotalRadiusPU = 10
+	TotalBombPU   = 10
+
 	DefaultMaxBomb    = 1
-	DefaultBombRadius = 5
+	DefaultBombRadius = 2
 
 	TurnDuration     = time.Millisecond * 10
 	TurnsToFlamout   = 70
@@ -63,79 +66,98 @@ var (
 		Bg: termbox.ColorDefault,
 	}
 
+	BombPUCell = &termbox.Cell{
+		Ch: 'Ⓑ',
+		Fg: termbox.ColorYellow,
+		Bg: termbox.ColorMagenta,
+	}
+
+	RadiusPUCell = &termbox.Cell{
+		Ch: 'Ⓡ',
+		Fg: termbox.ColorYellow,
+		Bg: termbox.ColorMagenta,
+	}
+
 	leftTopCorner = PlayerState{
-		Name:     "p1",
-		X:        MinX,
-		Y:        MinY,
-		Bombs:    0,
-		MaxBomb:  DefaultMaxBomb,
-		MaxRange: DefaultBombRadius,
-		Alive:    true,
+		Name:      "p1",
+		X:         MinX,
+		Y:         MinY,
+		Bombs:     0,
+		MaxBomb:   DefaultMaxBomb,
+		MaxRadius: DefaultBombRadius,
+		Alive:     true,
 	}
 
 	rightBottomCorner = PlayerState{
-		Name:     "p2",
-		X:        MaxX,
-		Y:        MaxY,
-		Bombs:    0,
-		MaxBomb:  DefaultMaxBomb,
-		MaxRange: DefaultBombRadius,
-		Alive:    true,
+		Name:      "p2",
+		X:         MaxX,
+		Y:         MaxY,
+		Bombs:     0,
+		MaxBomb:   DefaultMaxBomb,
+		MaxRadius: DefaultBombRadius,
+		Alive:     true,
 	}
 
 	leftBottomCorner = PlayerState{
-		Name:     "p3",
-		X:        MinX,
-		Y:        MaxY,
-		Bombs:    0,
-		MaxBomb:  DefaultMaxBomb,
-		MaxRange: DefaultBombRadius,
-		Alive:    true,
+		Name:      "p3",
+		X:         MinX,
+		Y:         MaxY,
+		Bombs:     0,
+		MaxBomb:   DefaultMaxBomb,
+		MaxRadius: DefaultBombRadius,
+		Alive:     true,
 	}
 
 	rightTopCorner = PlayerState{
-		Name:     "p4",
-		X:        MaxX,
-		Y:        MinY,
-		Bombs:    0,
-		MaxBomb:  DefaultMaxBomb,
-		MaxRange: DefaultBombRadius,
-		Alive:    false,
+		Name:      "p4",
+		X:         MaxX,
+		Y:         MinY,
+		Bombs:     0,
+		MaxBomb:   DefaultMaxBomb,
+		MaxRadius: DefaultBombRadius,
+		Alive:     false,
 	}
 )
 
+type Game struct {
+	schedule *scheduler.Scheduler
+	turnTick *time.Ticker
+	done     bool
+
+	players map[*PlayerState]Player
+
+	h, w                    int
+	bombPULeft, rangePULeft int
+}
+
 var (
 	log = logger.New("", "bomb.log", LogLevel)
-
-	schedule = scheduler.NewScheduler()
-	turnTick = time.NewTicker(TurnDuration)
-	done     = false
-
-	h, w int
 )
-
-func initLocalPlayer(state PlayerState) (Player, chan<- PlayerMove) {
-	keyPlayerChan := make(chan PlayerMove)
-	keyPlayer := NewInputPlayer(state, keyPlayerChan)
-	return keyPlayer, keyPlayerChan
-}
 
 func main() {
 	log.Infof("Starting Bomberman")
+
+	game := &Game{
+		schedule:    scheduler.NewScheduler(),
+		turnTick:    time.NewTicker(TurnDuration),
+		done:        false,
+		bombPULeft:  TotalBombPU,
+		rangePULeft: TotalRadiusPU,
+	}
 
 	log.Debugf("Initializing local player.")
 	localState := &leftTopCorner
 	localPlayer, inputChan := initLocalPlayer(*localState)
 
-	players := map[*PlayerState]Player{
-		&leftTopCorner:     localPlayer,
+	game.players = map[*PlayerState]Player{
+		localState:         localPlayer,
 		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
 		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
 	}
 
 	log.Debugf("Setup board.")
-	board := SetupBoard(players)
-	for state := range players {
+	board := SetupBoard(game.players)
+	for state := range game.players {
 		state.CurBoard = board.Clone()
 	}
 
@@ -144,7 +166,7 @@ func main() {
 		panic(err)
 	}
 	defer termbox.Close()
-	w, h = termbox.Size()
+	game.w, game.h = termbox.Size()
 
 	log.Debugf("Initializing termbox event poller.")
 	evChan := make(chan termbox.Event)
@@ -161,23 +183,23 @@ func main() {
 	}()
 
 	log.Debugf("Drawing for first time.")
-	board.draw(players)
+	board.draw(game.players)
 
 	log.Debugf("Starting.")
-	for _ = range turnTick.C {
-		if done {
+	for _ = range game.turnTick.C {
+		if game.done {
 			log.Infof("Game requested to stop.")
 			return
 		}
 
-		receiveEvents(evChan)
-		runSchedule()
-		applyPlayerMoves(players, board)
-		board.draw(players)
-		updatePlayers(players, board)
+		receiveEvents(game, evChan)
+		runSchedule(game)
+		applyPlayerMoves(game, board)
+		board.draw(game.players)
+		updatePlayers(game.players, board)
 
 		alives := []Player{}
-		for state, player := range players {
+		for state, player := range game.players {
 			if state.Alive {
 				alives = append(alives, player)
 			}
@@ -192,29 +214,34 @@ func main() {
 	}
 }
 
+func initLocalPlayer(state PlayerState) (Player, chan<- PlayerMove) {
+	keyPlayerChan := make(chan PlayerMove)
+	keyPlayer := NewInputPlayer(state, keyPlayerChan)
+	return keyPlayer, keyPlayerChan
+}
+
 //////////////
 // Events
 
-func receiveEvents(evChan <-chan termbox.Event) {
+func receiveEvents(game *Game, evChan <-chan termbox.Event) {
 	select {
 	case ev := <-evChan:
-		log.Debugf("Event! %v", ev)
 		switch ev.Type {
 		case termbox.EventResize:
-			w, h = ev.Width, ev.Height
+			game.w, game.h = ev.Width, ev.Height
 		case termbox.EventError:
-			done = true
+			game.done = true
 		case termbox.EventKey:
-			doKey(ev.Key)
+			doKey(game, ev.Key)
 		}
 	default:
 	}
 }
 
-func doKey(key termbox.Key) {
+func doKey(game *Game, key termbox.Key) {
 	switch key {
 	case termbox.KeyCtrlC:
-		done = true
+		game.done = true
 	}
 }
 
@@ -231,13 +258,13 @@ func (a *BomberAction) Duration() int {
 	return a.duration
 }
 
-func runSchedule() {
-	if !schedule.HasNext() {
+func runSchedule(game *Game) {
+	if !game.schedule.HasNext() {
 		return
 	}
-	schedule.NextTurn()
+	game.schedule.NextTurn()
 
-	schedule.DoTurn(func(a scheduler.Action, turn int) error {
+	game.schedule.DoTurn(func(a scheduler.Action, turn int) error {
 		act := a.(*BomberAction)
 		log.Debugf("[%s] !!! turn %d/%d", act.name, turn, act.Duration())
 		return act.doTurn(turn)
@@ -247,12 +274,12 @@ func runSchedule() {
 //////////////
 // Players
 
-func applyPlayerMoves(players map[*PlayerState]Player, board *Board) {
-	for state, player := range players {
+func applyPlayerMoves(game *Game, board *Board) {
+	for state, player := range game.players {
 		if state.Alive {
 			select {
 			case m := <-player.Move():
-				move(board, players, state, m)
+				move(game, board, state, m)
 			default:
 			}
 		}
@@ -290,8 +317,8 @@ func toPlayerMove(ev termbox.Event) (PlayerMove, bool) {
 	return PlayerMove(""), false
 }
 
-func move(board *Board, states map[*PlayerState]Player, state *PlayerState, action PlayerMove) {
-	nextX, nextY := state.X, state.Y
+func move(game *Game, board *Board, pState *PlayerState, action PlayerMove) {
+	nextX, nextY := pState.X, pState.Y
 	switch action {
 	case Up:
 		nextY--
@@ -302,26 +329,31 @@ func move(board *Board, states map[*PlayerState]Player, state *PlayerState, acti
 	case Right:
 		nextX++
 	case PutBomb:
-		placeBomb(board, states, state)
+		placeBomb(board, game, pState)
 	}
 
-	if !traversable(board, states, nextX, nextY) {
+	if !board.Traversable(nextX, nextY) {
 		return
 	}
 
+	pickPowerUps(board, pState, nextX, nextY)
+
 	if board[nextX][nextY] == FlameCell {
-		state.Alive = false
-		log.Infof("[%s] Died moving into flame.", state.Name)
+		pState.Alive = false
+		log.Infof("[%s] Died moving into flame.", pState.Name)
 	}
-	state.X, state.Y = nextX, nextY
+	pState.X, pState.Y = nextX, nextY
 }
 
-func traversable(board *Board, states map[*PlayerState]Player, x, y int) bool {
+func pickPowerUps(board *Board, pState *PlayerState, x, y int) {
 	switch board[x][y] {
-	case GroundCell, FlameCell:
-		return true
+	case BombPUCell:
+		pState.MaxBomb++
+		board[x][y] = GroundCell
+	case RadiusPUCell:
+		pState.MaxRadius++
+		board[x][y] = GroundCell
 	}
-	return false
 }
 
 func init() {

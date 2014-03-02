@@ -45,6 +45,14 @@ func SetupBoard(players map[*PlayerState]Player) *Board {
 	return board
 }
 
+func (b *Board) Traversable(x, y int) bool {
+	switch b[x][y] {
+	case GroundCell, FlameCell, BombPUCell, RadiusPUCell:
+		return true
+	}
+	return false
+}
+
 func (board *Board) draw(players map[*PlayerState]Player) {
 	for i := 0; i < len(board); i++ {
 		for j := 0; j < len(board[0]); j++ {

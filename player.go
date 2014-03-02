@@ -6,11 +6,11 @@ import (
 )
 
 type PlayerState struct {
-	Name                     string
-	X, Y                     int
-	Bombs, MaxBomb, MaxRange int
-	Alive                    bool
-	CurBoard                 Board
+	Name                      string
+	X, Y                      int
+	Bombs, MaxBomb, MaxRadius int
+	Alive                     bool
+	CurBoard                  Board
 }
 
 type PlayerMove string
