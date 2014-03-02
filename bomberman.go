@@ -8,43 +8,218 @@ import (
 	"time"
 )
 
+const (
+	LogLevel = logger.Debug
+
+	MinX           = 1
+	MaxX           = 49
+	MinY           = 1
+	MaxY           = 21
+	WallPercentage = 50
+
+	DefaultMaxBomb    = 1
+	DefaultBombRadius = 5
+
+	TurnDuration     = time.Millisecond * 10
+	TurnsToFlamout   = 70
+	TurnsToReplenish = 250
+	TurnsToExplode   = 200
+)
+
 var (
-	Wall = &termbox.Cell{
+	WallCell = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorGreen,
 		Bg: termbox.ColorBlack,
 	}
 
-	Rock = &termbox.Cell{
+	RockCell = &termbox.Cell{
 		Ch: '▓',
 		Fg: termbox.ColorYellow,
 		Bg: termbox.ColorBlack,
 	}
 
-	Ground = &termbox.Cell{
+	GroundCell = &termbox.Cell{
 		Ch: ' ',
 		Fg: termbox.ColorDefault,
 		Bg: termbox.ColorDefault,
 	}
 
-	Player = &termbox.Cell{
+	PlayerCell = &termbox.Cell{
 		Ch: '♨',
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorMagenta,
 	}
 
-	Bomb = &termbox.Cell{
+	BombCell = &termbox.Cell{
 		Ch: 'ß',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
 
-	Flame = &termbox.Cell{
+	FlameCell = &termbox.Cell{
 		Ch: '+',
 		Fg: termbox.ColorRed,
 		Bg: termbox.ColorDefault,
 	}
+
+	leftTopCorner = PlayerState{
+		Name:     "p1",
+		X:        MinX,
+		Y:        MinY,
+		Bombs:    0,
+		MaxBomb:  DefaultMaxBomb,
+		MaxRange: DefaultBombRadius,
+		Alive:    true,
+	}
+
+	rightBottomCorner = PlayerState{
+		Name:     "p2",
+		X:        MaxX,
+		Y:        MaxY,
+		Bombs:    0,
+		MaxBomb:  DefaultMaxBomb,
+		MaxRange: DefaultBombRadius,
+		Alive:    true,
+	}
+
+	leftBottomCorner = PlayerState{
+		Name:     "p3",
+		X:        MinX,
+		Y:        MaxY,
+		Bombs:    0,
+		MaxBomb:  DefaultMaxBomb,
+		MaxRange: DefaultBombRadius,
+		Alive:    true,
+	}
+
+	rightTopCorner = PlayerState{
+		Name:     "p4",
+		X:        MaxX,
+		Y:        MinY,
+		Bombs:    0,
+		MaxBomb:  DefaultMaxBomb,
+		MaxRange: DefaultBombRadius,
+		Alive:    false,
+	}
 )
+
+var (
+	log = logger.New("", "bomb.log", LogLevel)
+
+	schedule = scheduler.NewScheduler()
+	turnTick = time.NewTicker(TurnDuration)
+	done     = false
+
+	h, w int
+)
+
+func initLocalPlayer(state PlayerState) (Player, chan<- PlayerMove) {
+	keyPlayerChan := make(chan PlayerMove)
+	keyPlayer := NewInputPlayer(state, keyPlayerChan)
+	return keyPlayer, keyPlayerChan
+}
+
+func main() {
+	log.Infof("Starting Bomberman")
+
+	log.Debugf("Initializing local player.")
+	localState := &leftTopCorner
+	localPlayer, inputChan := initLocalPlayer(*localState)
+
+	players := map[*PlayerState]Player{
+		&leftTopCorner:     localPlayer,
+		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
+		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+	}
+
+	log.Debugf("Setup board.")
+	board := SetupBoard(players)
+	for state := range players {
+		state.CurBoard = board.Clone()
+	}
+
+	log.Debugf("Initializing termbox.")
+	if err := termbox.Init(); err != nil {
+		panic(err)
+	}
+	defer termbox.Close()
+	w, h = termbox.Size()
+
+	log.Debugf("Initializing termbox event poller.")
+	evChan := make(chan termbox.Event)
+	go func() {
+		log.Debugf("Polling events.")
+		for {
+			ev := termbox.PollEvent()
+			if pm, ok := toPlayerMove(ev); ok {
+				inputChan <- pm
+			} else {
+				evChan <- ev
+			}
+		}
+	}()
+
+	log.Debugf("Drawing for first time.")
+	board.draw(players)
+
+	log.Debugf("Starting.")
+	for _ = range turnTick.C {
+		if done {
+			log.Infof("Game requested to stop.")
+			return
+		}
+
+		receiveEvents(evChan)
+		runSchedule()
+		applyPlayerMoves(players, board)
+		board.draw(players)
+		updatePlayers(players, board)
+
+		alives := []Player{}
+		for state, player := range players {
+			if state.Alive {
+				alives = append(alives, player)
+			}
+		}
+		if len(alives) == 1 {
+			log.Infof("%s won. All other players are dead.", alives[0].Name())
+			return
+		} else if len(alives) == 0 {
+			log.Infof("Draw! All players are dead.")
+			return
+		}
+	}
+}
+
+//////////////
+// Events
+
+func receiveEvents(evChan <-chan termbox.Event) {
+	select {
+	case ev := <-evChan:
+		log.Debugf("Event! %v", ev)
+		switch ev.Type {
+		case termbox.EventResize:
+			w, h = ev.Width, ev.Height
+		case termbox.EventError:
+			done = true
+		case termbox.EventKey:
+			doKey(ev.Key)
+		}
+	default:
+	}
+}
+
+func doKey(key termbox.Key) {
+	switch key {
+	case termbox.KeyCtrlC:
+		done = true
+	}
+}
+
+//////////////
+// Schedule
 
 type BomberAction struct {
 	name     string
@@ -56,315 +231,97 @@ func (a *BomberAction) Duration() int {
 	return a.duration
 }
 
-var (
-	log = logger.New("", "bomb.log", logger.Debug)
-
-	schedule     = scheduler.NewScheduler()
-	turnDuration = time.Millisecond * 10
-	turnTick     = time.NewTicker(turnDuration)
-	done         = false
-
-	board [81][25]*termbox.Cell
-
-	x, y         int = 1, 1
-	lastX, lastY int
-	h, w         int
-
-	blastRadius = 3
-
-	canPlaceBomb   = true
-	wallPercentage = 50
-)
-
-func setupBoard() {
-	log.Debugf("Setup board")
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			switch {
-			case i == 0 || i == len(board)-1:
-				board[i][j] = Wall
-			case j == 0 || j == len(board[0])-1:
-				board[i][j] = Wall
-			case j%2 == 0 && i%2 == 0:
-				board[i][j] = Wall
-			default:
-				if rand.Intn(100) < 100-wallPercentage {
-					board[i][j] = Ground
-				} else {
-					board[i][j] = Rock
-				}
-			}
-		}
+func runSchedule() {
+	if !schedule.HasNext() {
+		return
 	}
+	schedule.NextTurn()
 
-	around(x, y, 3, func(cellX, cellY int) {
-		if board[cellX][cellY] == Rock {
-			board[cellX][cellY] = Ground
-		}
+	schedule.DoTurn(func(a scheduler.Action, turn int) error {
+		act := a.(*BomberAction)
+		log.Debugf("[%s] !!! turn %d/%d", act.name, turn, act.Duration())
+		return act.doTurn(turn)
 	})
-	log.Debugf("Setup board done.")
 }
 
-func main() {
-	log.Debugf("Starting.")
-	setupBoard()
-	if err := termbox.Init(); err != nil {
-		panic(err)
-	}
-	defer termbox.Close()
+//////////////
+// Players
 
-	evChan := make(chan termbox.Event)
-
-	go func() {
-		log.Debugf("Polling events.")
-		for {
-			ev := termbox.PollEvent()
-			evChan <- ev
-		}
-	}()
-
-	w, h = termbox.Size()
-	log.Debugf("Drawing for first time.")
-	draw()
-
-	for _ = range turnTick.C {
-		if done {
-			return
-		}
-		select {
-		case ev := <-evChan:
-			switch ev.Type {
-			case termbox.EventResize:
-				w, h = ev.Width, ev.Height
-			case termbox.EventError:
-				done = true
-			case termbox.EventKey:
-				doKey(ev.Key)
+func applyPlayerMoves(players map[*PlayerState]Player, board *Board) {
+	for state, player := range players {
+		if state.Alive {
+			select {
+			case m := <-player.Move():
+				move(board, players, state, m)
+			default:
 			}
+		}
+	}
+}
+
+func updatePlayers(players map[*PlayerState]Player, board *Board) {
+	for state, player := range players {
+		state.CurBoard = board.Clone()
+		select {
+		case player.Update() <- *state:
 		default:
 		}
-
-		if schedule.HasNext() {
-			schedule.NextTurn()
-			schedule.DoTurn(func(a scheduler.Action, turn int) error {
-				act := a.(*BomberAction)
-				log.Debugf("Doing action '%s', turn %d/%d", act.name, turn, act.Duration())
-				return act.doTurn(turn)
-			})
-		}
-
-		draw()
-	}
-
-}
-
-func draw() {
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			cell := board[i][j]
-			termbox.SetCell(i*2, j, cell.Ch, cell.Fg, cell.Bg)
-			termbox.SetCell(i*2+1, j, cell.Ch, cell.Fg, cell.Bg)
-		}
-	}
-	termbox.SetCell(x*2, y, Player.Ch, Player.Fg, Player.Bg)
-	termbox.SetCell(x*2+1, y, Player.Ch, Player.Fg, Player.Bg)
-	termbox.Flush()
-}
-
-func doKey(key termbox.Key) {
-	switch key {
-	case termbox.KeyCtrlC,
-		termbox.KeyArrowUp,
-		termbox.KeyArrowDown,
-		termbox.KeyArrowLeft,
-		termbox.KeyArrowRight:
-		move(key)
-	case termbox.KeySpace:
-		placeBomb()
 	}
 }
 
-func move(key termbox.Key) {
-	nextX, nextY := x, y
-	switch key {
-	case termbox.KeyCtrlC:
-		done = true
+func toPlayerMove(ev termbox.Event) (PlayerMove, bool) {
+	if ev.Type != termbox.EventKey {
+		return PlayerMove(""), false
+	}
+
+	switch ev.Key {
 	case termbox.KeyArrowUp:
-		nextY--
+		return Up, true
 	case termbox.KeyArrowDown:
-		nextY++
+		return Down, true
 	case termbox.KeyArrowLeft:
-		nextX--
+		return Left, true
 	case termbox.KeyArrowRight:
+		return Right, true
+	case termbox.KeySpace:
+		return PutBomb, true
+	}
+
+	return PlayerMove(""), false
+}
+
+func move(board *Board, states map[*PlayerState]Player, state *PlayerState, action PlayerMove) {
+	nextX, nextY := state.X, state.Y
+	switch action {
+	case Up:
+		nextY--
+	case Down:
+		nextY++
+	case Left:
+		nextX--
+	case Right:
 		nextX++
+	case PutBomb:
+		placeBomb(board, states, state)
 	}
 
-	if canMove(nextX, nextY) {
-		lastX, lastY = x, y
-		x, y = nextX, nextY
-	}
-}
-
-func canMove(x, y int) bool {
-	switch board[x][y] {
-	case Ground:
-		return true
-	case Flame:
-		done = true
-		return true
-	}
-	return false
-}
-
-func placeBomb() {
-	log.Debugf("Attempting to place bomb.")
-	if canPlaceBomb {
-		canPlaceBomb = false
-	} else {
-		log.Debugf("Failed.")
+	if !traversable(board, states, nextX, nextY) {
 		return
 	}
 
-	board[x][y] = Bomb
-	tmpX, tmpY := x, y
-
-	allowBombs := func(turn int) error {
-		canPlaceBomb = true
-		return nil
+	if board[nextX][nextY] == FlameCell {
+		state.Alive = false
+		log.Infof("[%s] Died moving into flame.", state.Name)
 	}
-
-	doFlameout := func(turn int) error {
-		log.Debugf("Flameout.")
-		removeFlame(tmpX, tmpY)
-
-		return nil
-	}
-
-	doExplosion := func(turn int) error {
-		log.Debugf("Exploding.")
-		if turn == 0 {
-
-			explode(tmpX, tmpY)
-			log.Debugf("Registering flameout.")
-			schedule.Register(&BomberAction{
-				name:     "doFlameout",
-				duration: 1,
-				doTurn:   doFlameout,
-			}, 70)
-
-			log.Debugf("Registering bomb allowance.")
-			schedule.Register(&BomberAction{
-				name:     "allowBombs",
-				duration: 1,
-				doTurn:   allowBombs,
-			}, 250)
-		}
-
-		switch turn % 4 {
-		case 0:
-			Flame.Ch = 'x'
-			Flame.Fg = termbox.ColorYellow
-			Flame.Bg = termbox.ColorWhite
-		case 1:
-			Flame.Ch = '*'
-			Flame.Fg = termbox.ColorYellow
-			Flame.Bg = termbox.ColorBlack
-		case 2:
-			Flame.Ch = '+'
-			Flame.Fg = termbox.ColorRed
-			Flame.Bg = termbox.ColorYellow
-		case 3:
-			Flame.Ch = '*'
-			Flame.Fg = termbox.ColorRed
-			Flame.Bg = termbox.ColorBlack
-		}
-
-		return nil
-	}
-
-	log.Debugf("Registering explosion.")
-	schedule.Register(&BomberAction{
-		name:     "doExplosion",
-		duration: 70,
-		doTurn:   doExplosion,
-	}, 200)
+	state.X, state.Y = nextX, nextY
 }
 
-func explode(eplodeX, eplodeY int) {
-	board[eplodeX][eplodeY] = Ground
-	cross(eplodeX, eplodeY, blastRadius, func(cellX, cellY int) {
-		if cellX == x && cellY == y {
-			done = true
-		}
-
-		if board[cellX][cellY] != Wall {
-			board[cellX][cellY] = Flame
-		}
-	})
-}
-
-func removeFlame(x, y int) {
-	cross(x, y, blastRadius, func(cellX, cellY int) {
-		if board[cellX][cellY] == Flame {
-			board[cellX][cellY] = Ground
-		}
-	})
-}
-
-func min(n, m int) int {
-	if n < m {
-		return n
+func traversable(board *Board, states map[*PlayerState]Player, x, y int) bool {
+	switch board[x][y] {
+	case GroundCell, FlameCell:
+		return true
 	}
-	return m
-}
-
-func max(n, m int) int {
-	if n > m {
-		return n
-	}
-	return m
-}
-
-func around(x, y, rad int, apply func(int, int)) {
-	for i := max(x-rad, 0); i < min(x+rad, len(board)); i++ {
-		for j := max(y-rad, 0); j < min(y+rad, len(board[0])); j++ {
-			apply(i, j)
-		}
-	}
-}
-
-func cross(x, y, dist int, apply func(int, int)) {
-	// (x,y) and to the right
-	for i := x; i < min(x+dist, len(board)); i++ {
-		if board[i][y] == Wall {
-			break
-		}
-		apply(i, y)
-	}
-
-	// left of (x,y)
-	for i := x - 1; i > max(x-dist, 0); i-- {
-		if board[i][y] == Wall {
-			break
-		}
-		apply(i, y)
-	}
-
-	// below (x,y)
-	for j := y + 1; j < min(y+dist, len(board)); j++ {
-		if board[x][j] == Wall {
-			break
-		}
-		apply(x, j)
-	}
-
-	// above (x,y)
-	for j := y - 1; j > max(y-dist, 0); j-- {
-		if board[x][j] == Wall {
-			break
-		}
-		apply(x, j)
-	}
+	return false
 }
 
 func init() {

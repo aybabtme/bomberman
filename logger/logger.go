@@ -9,12 +9,12 @@ import (
 type Level uint8
 
 const (
-	Debug = iota
-	Info
-	Warn
-	Error
+	Panic = iota
 	Fatal
-	Panic
+	Error
+	Warn
+	Info
+	Debug
 )
 
 type logger struct {
@@ -67,8 +67,5 @@ func (l *logger) Fatalf(msg string, arg ...interface{}) {
 }
 
 func (l *logger) Panicf(msg string, arg ...interface{}) {
-	if l.lvl < Panic {
-		return
-	}
 	l.l.Panicf("[Panic] "+msg, arg...)
 }
