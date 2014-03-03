@@ -12,22 +12,24 @@ import (
 const (
 	LogLevel = logger.Debug
 
-	MinX           = 1
-	MaxX           = 49
-	MinY           = 1
-	MaxY           = 21
+	MinX = 1
+	MaxX = 49
+	MinY = 1
+	MaxY = 21
+
+	RockFreeArea   = 1
 	RockPercentage = 50
 
-	TotalRadiusPU = 125
-	TotalBombPU   = 125
+	TotalRadiusPU = 20
+	TotalBombPU   = 20
 
 	DefaultMaxBomb    = 1
 	DefaultBombRadius = 2
 
 	TurnDuration     = time.Millisecond * 10
-	TurnsToFlamout   = 70 / 1
-	TurnsToReplenish = 250 / 1
-	TurnsToExplode   = 200 / 1
+	TurnsToFlamout   = 70
+	TurnsToReplenish = 250
+	TurnsToExplode   = 200
 )
 
 type TboxGameObj struct {

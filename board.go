@@ -13,7 +13,7 @@ func SetupBoard(game *Game) *Board {
 
 	freeCells := board.setupMap()
 	rockPlaced := board.setupRocks(freeCells)
-	cleared := board.clearAroundPlayers(game.players)
+	cleared := board.clearAroundPlayers(game.players, RockFreeArea)
 	rockPlaced -= cleared
 
 	bombRocksLeft := rockPlaced / 2
@@ -73,14 +73,14 @@ func (board *Board) setupRocks(freeCells int) int {
 	return rockPlaced
 }
 
-func (board *Board) clearAroundPlayers(players map[*PlayerState]Player) (removed int) {
+func (board *Board) clearAroundPlayers(players map[*PlayerState]Player, radius int) (removed int) {
 	for state := range players {
 		if !state.Alive {
 			continue
 		}
 
 		x, y := state.X, state.Y
-		board.asSquare(x, y, 5, func(cell *cell.Cell) {
+		board.asSquare(x, y, radius, func(cell *cell.Cell) {
 			if cell.Top() == RockObj {
 				cell.Pop()
 				removed++
