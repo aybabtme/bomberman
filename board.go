@@ -1,133 +1,55 @@
 package main
 
 import (
-	"fmt"
+	"github.com/aybabtme/bomberman/cell"
 	"github.com/nsf/termbox-go"
 	"math/rand"
 )
 
-// Cell is a cell on the board. A cell can have many z layers.
-type Cell struct {
-	base    GameObject
-	zLayers []GameObject
-	X, Y    int
-}
+type Board [MaxX + 2][MaxY + 2]*cell.Cell
 
-// NewCell creates a cell with base as z layer 0.
-func NewCell(base GameObject, x, y int) *Cell {
-	return &Cell{
-		base:    base,
-		zLayers: make([]GameObject, 0, 0),
-		X:       x,
-		Y:       y,
-	}
-}
-
-// Top returns the object on top of the z layers.
-func (c *Cell) Top() GameObject {
-	if len(c.zLayers) == 0 {
-		return c.base
-	}
-	return c.zLayers[len(c.zLayers)-1]
-}
-
-// Push adds an object to the top of the z layers.
-func (c *Cell) Push(o GameObject) {
-	c.zLayers = append(c.zLayers, o)
-}
-
-// Pop returns the top object.  It will remove the object from the layers unless
-// it's the base layer.
-func (c *Cell) Pop() (GameObject, bool) {
-	if len(c.zLayers) == 0 {
-		return c.base, false
-	}
-	var pop GameObject
-	pop = c.zLayers[len(c.zLayers)-1]
-	c.zLayers = c.zLayers[:len(c.zLayers)-1]
-	return pop, true
-}
-
-// RemoveLayer removes the object at layer z, unless if z is the base layer. If
-// z is out of bound, this will panic.
-func (c *Cell) RemoveLayer(z int) GameObject {
-	// Case z == 0
-	if z == 0 {
-		return c.base
-	}
-
-	// Case z >= len, z <= 0: panic
-	removed := c.zLayers[z-1]
-
-	// Case z == 1: will skip body of loop
-	for i := z - 1; i < len(c.zLayers)-1; i++ {
-		c.zLayers[i] = c.zLayers[i+1]
-	}
-
-	// z has at least 1 element
-	c.zLayers = c.zLayers[:len(c.zLayers)-1]
-	return removed
-}
-
-// Remove finds an GameObject to remove in the Cells z layers. The base
-// layer can't be removed.
-func (c *Cell) Remove(toRemove GameObject) bool {
-	if c.base == toRemove {
-		return false
-	}
-	for z, obj := range c.zLayers {
-		if obj == toRemove {
-			c.RemoveLayer(z + 1)
-			return true
+func (board *Board) setupMap() (free, used int) {
+	board.forEachIndex(func(_ *cell.Cell, x, y int) {
+		board[x][y] = cell.NewCell(GroundObj, x, y)
+		switch {
+		case
+			x == 0 || x == len(board)-1,    // Left and right
+			y == 0 || y == len(board[0])-1, // Top and bottom
+			y%2 == 0 && x%2 == 0:           // Every second cell
+			board[x][y].Push(WallObj)
+			used++
+		default:
+			free++
 		}
-	}
-	return false
+	})
+	return
 }
-
-// Layer looks up the object at layer z. If z is out of bound, this will panic.
-func (c *Cell) Layer(z int) GameObject {
-	if z == 0 {
-		return c.base
-	}
-	// Invalid Z will panic
-	return c.zLayers[z-1]
-}
-
-// Depth gives the depth of the z layer, including the base layer.
-func (c *Cell) Depth() int {
-	return 1 + len(c.zLayers)
-}
-
-func (c *Cell) GoString() string {
-	return fmt.Sprintf("cell{x=%d,y=%d,z=%d,base=%#v,layers=%#v}",
-		c.X, c.Y, c.Depth(), c.base, c.zLayers)
-}
-
-type Board [MaxX + 2][MaxY + 2]*Cell
 
 func SetupBoard(game *Game) *Board {
 	board := &Board{}
 
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			board[i][j] = NewCell(GroundObj, i, j)
+	free, _ := board.setupMap()
 
-			switch {
-			case i == 0 || i == len(board)-1:
-				board[i][j].Push(WallObj)
-			case j == 0 || j == len(board[0])-1:
-				board[i][j].Push(WallObj)
-			case j%2 == 0 && i%2 == 0:
-				board[i][j].Push(WallObj)
-			default:
-				if rand.Intn(100) < 100-WallPercentage {
-					// Push nothing, top is GroundObj
-				} else {
-					board[i][j].Push(RockObj)
-				}
-			}
-		}
+	needRock := free * RockPercentage
+	rockPlaced := 0
+	rockProb := func(rockLeft, freeCell int) float32 {
+		return float32(rockLeft) / float32(freeCell) / 100.0
 	}
+
+	putRock := func(cell *cell.Cell) {
+		needRock--
+		rockPlaced++
+		cell.Push(RockObj)
+	}
+
+	groundTest := func(c *cell.Cell) bool { return c.Top() == GroundObj }
+	board.filter(groundTest, func(c *cell.Cell) {
+		dice := rand.Float32()
+		prob := rockProb(needRock, free)
+		if dice > prob {
+			putRock(c)
+		}
+	})
 
 	for state := range game.players {
 		if !state.Alive {
@@ -135,14 +57,55 @@ func SetupBoard(game *Game) *Board {
 		}
 
 		x, y := state.X, state.Y
-		board.asSquare(x, y, 5, func(cellX, cellY int) {
-			cell := board[cellX][cellY]
+		board.asSquare(x, y, 5, func(cell *cell.Cell) {
 			if cell.Top() == RockObj {
 				cell.Pop()
+				rockPlaced--
 			}
 		})
 		board[x][y].Push(state.GameObject)
 	}
+
+	bombProb := func(bombLeft, freeRocks int) float32 {
+		log.Debugf("bombLeft=%d, freeRocks=%d", bombLeft, freeRocks)
+		return float32(bombLeft) / float32(freeRocks) / 100.0
+	}
+
+	radiusProb := func(radiusLeft, freeRocks int) float32 {
+		return float32(radiusLeft) / float32(freeRocks) / 100.0
+	}
+
+	rocksForBomb := rockPlaced / 2
+	rocksForRadius := rockPlaced / 2
+
+	board.filter(func(c *cell.Cell) bool {
+		return c.Top() == RockObj && game.bombPULeft > 0 && game.rangePULeft > 0
+	},
+		func(c *cell.Cell) {
+			switch rand.Intn(2) {
+			case 0:
+				prob := bombProb(game.bombPULeft, rocksForBomb)
+				dice := rand.Float32()
+				log.Debugf("P(%2f) Trying to put bombPU, dice=%0.2f", prob, dice)
+				if dice > prob && game.bombPULeft > 0 {
+					rocksForBomb--
+					game.bombPULeft--
+					rock, _ := c.Pop()
+					c.Push(BombPUObj)
+					c.Push(rock)
+				}
+			case 1:
+				prob := radiusProb(game.rangePULeft, rocksForRadius)
+				dice := rand.Float32()
+				if dice > prob && game.rangePULeft > 0 {
+					rocksForRadius--
+					game.rangePULeft--
+					rock, _ := c.Pop()
+					c.Push(RadiusPUObj)
+					c.Push(rock)
+				}
+			}
+		})
 
 	return board
 }
@@ -152,11 +115,9 @@ func (b *Board) Traversable(x, y int) bool {
 }
 
 func (board *Board) draw(players map[*PlayerState]Player) {
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			board[i][j].Top().Draw(i, j)
-		}
-	}
+	board.forEach(func(c *cell.Cell) {
+		c.Top().Draw(c.X, c.Y)
+	})
 
 	for state := range players {
 		if !state.Alive {
@@ -170,18 +131,41 @@ func (board *Board) draw(players map[*PlayerState]Player) {
 
 func (b *Board) Clone() Board {
 	clone := Board{}
-	for i := range b {
-		for j := range b[i] {
-			clone[i][j] = NewCell(b[i][j].Top(), i, j)
-		}
-	}
+	b.forEach(func(c *cell.Cell) {
+		clone[c.X][c.Y] = cell.NewCell(c.Top(), c.X, c.Y)
+	})
 	return clone
 }
 
-func (b *Board) asSquare(x, y, rad int, apply func(int, int)) {
+///////////
+// Helpers
+
+// functional iterations
+
+func (b *Board) forEachIndex(apply func(*cell.Cell, int, int)) {
+	for x, inner := range b {
+		for y, cell := range inner {
+			apply(cell, x, y)
+		}
+	}
+}
+
+func (b *Board) forEach(apply func(*cell.Cell)) {
+	b.forEachIndex(func(c *cell.Cell, x, y int) { apply(c) })
+}
+
+func (b *Board) filter(test func(*cell.Cell) bool, apply func(*cell.Cell)) {
+	b.forEach(func(cell *cell.Cell) {
+		if test(cell) {
+			apply(cell)
+		}
+	})
+}
+
+func (b *Board) asSquare(x, y, rad int, apply func(*cell.Cell)) {
 	for i := max(x-rad, 0); i <= min(x+rad, len(b)-1); i++ {
 		for j := max(y-rad, 0); j <= min(y+rad, len(b[0])-1); j++ {
-			apply(i, j)
+			apply(b[i][j])
 		}
 	}
 }
@@ -219,6 +203,8 @@ func (b *Board) asCross(x, y, dist int, apply func(int, int)) {
 		apply(x, j)
 	}
 }
+
+// Integer math
 
 func min(n, m int) int {
 	if n < m {

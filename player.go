@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/aybabtme/bomberman/cell"
 	"math/rand"
 	"time"
 )
@@ -11,7 +12,7 @@ type PlayerState struct {
 	Bombs, MaxBomb, MaxRadius int
 	Alive                     bool
 	CurBoard                  Board
-	GameObject                GameObject
+	GameObject                cell.GameObject
 }
 
 type PlayerMove string

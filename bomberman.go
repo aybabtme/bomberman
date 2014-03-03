@@ -15,7 +15,7 @@ const (
 	MaxX           = 49
 	MinY           = 1
 	MaxY           = 21
-	WallPercentage = 50
+	RockPercentage = 50
 
 	TotalRadiusPU = 10
 	TotalBombPU   = 10
@@ -28,11 +28,6 @@ const (
 	TurnsToReplenish = 250 / 3
 	TurnsToExplode   = 200 / 3
 )
-
-type GameObject interface {
-	Draw(x, y int)
-	Traversable() bool
-}
 
 type TboxGameObj struct {
 	*termbox.Cell
@@ -430,9 +425,11 @@ func pickPowerUps(board *Board, pState *PlayerState, x, y int) {
 	case BombPUObj:
 		pState.MaxBomb++
 		board[x][y].Pop()
+		log.Infof("[%s] Powerup! Max bombs: %d", pState.Name, pState.MaxBomb)
 	case RadiusPUObj:
 		pState.MaxRadius++
 		board[x][y].Pop()
+		log.Infof("[%s] Powerup! Max radius: %d", pState.Name, pState.MaxRadius)
 	}
 }
 

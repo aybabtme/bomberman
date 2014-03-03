@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/aybabtme/bomberman/cell"
 )
 
 // Bombs!
@@ -90,7 +91,7 @@ func explode(game *Game, board *Board, explodeX, explodeY, radius int) {
 }
 
 func removeFlame(board *Board, x, y, radius int) {
-	var cell *Cell
+	var cell *cell.Cell
 	board.asCross(x, y, radius, func(cellX, cellY int) {
 		cell = board[cellX][cellY]
 		if cell.Top() == FlameObj {
