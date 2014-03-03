@@ -24,7 +24,7 @@ func placeBomb(board *Board, game *Game, placerState *PlayerState) {
 	// radius is snapshot'd at this point in time
 	radius := placerState.MaxRadius
 
-	board[x][y] = BombCell
+	board[x][y].Push(BombObj)
 
 	replenishBomb := func(turn int) error {
 		if placerState.Bombs > 0 {
@@ -72,7 +72,7 @@ func placeBomb(board *Board, game *Game, placerState *PlayerState) {
 }
 
 func explode(game *Game, board *Board, explodeX, explodeY, radius int) {
-	board[explodeX][explodeY] = GroundCell
+	board[explodeX][explodeY].Remove(BombObj)
 	board.asCross(explodeX, explodeY, radius, func(cellX, cellY int) {
 
 		for playerState, player := range game.players {
@@ -83,16 +83,21 @@ func explode(game *Game, board *Board, explodeX, explodeY, radius int) {
 			}
 		}
 
-		if board[cellX][cellY] != WallCell {
-			board[cellX][cellY] = FlameCell
+		if board[cellX][cellY].Top() != WallObj {
+			board[cellX][cellY].Push(FlameObj)
 		}
 	})
 }
 
 func removeFlame(board *Board, x, y, radius int) {
+	var cell *Cell
 	board.asCross(x, y, radius, func(cellX, cellY int) {
-		if board[cellX][cellY] == FlameCell {
-			board[cellX][cellY] = GroundCell
+		cell = board[cellX][cellY]
+		if cell.Top() == FlameObj {
+			cell.Pop()
+		}
+		if cell.Top() == RockObj {
+			cell.Pop()
 		}
 	})
 }

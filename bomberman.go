@@ -24,98 +24,162 @@ const (
 	DefaultBombRadius = 2
 
 	TurnDuration     = time.Millisecond * 10
-	TurnsToFlamout   = 70
-	TurnsToReplenish = 250
-	TurnsToExplode   = 200
+	TurnsToFlamout   = 70 / 3
+	TurnsToReplenish = 250 / 3
+	TurnsToExplode   = 200 / 3
 )
 
+type GameObject interface {
+	Draw(x, y int)
+	Traversable() bool
+}
+
+type TboxGameObj struct {
+	*termbox.Cell
+	name        string
+	traversable bool
+}
+
+func (to *TboxGameObj) Draw(x, y int) {
+	termbox.SetCell(x*2, y, to.Ch, to.Fg, to.Bg)
+	termbox.SetCell(x*2+1, y, to.Ch, to.Fg, to.Bg)
+}
+
+func (t *TboxGameObj) Traversable() bool {
+	return t.traversable
+}
+
+func (t *TboxGameObj) GoString() string {
+	return t.name
+}
+
+type TboxPlayerObj struct {
+	name string
+}
+
+func (to TboxPlayerObj) Draw(x, y int) {
+	fg, bg := termbox.ColorWhite, termbox.ColorMagenta
+	termbox.SetCell(x*2, y, []rune(to.name)[0], fg, bg)
+	termbox.SetCell(x*2+1, y, []rune(to.name)[1], fg, bg)
+}
+
+func (t TboxPlayerObj) Traversable() bool {
+	return true
+}
+
 var (
-	WallCell = &termbox.Cell{
-		Ch: '▓',
-		Fg: termbox.ColorGreen,
-		Bg: termbox.ColorBlack,
+	WallObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: '▓',
+			Fg: termbox.ColorGreen,
+			Bg: termbox.ColorBlack,
+		},
+		"Wall",
+		false,
 	}
 
-	RockCell = &termbox.Cell{
-		Ch: '▓',
-		Fg: termbox.ColorYellow,
-		Bg: termbox.ColorBlack,
+	RockObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: '▓',
+			Fg: termbox.ColorYellow,
+			Bg: termbox.ColorBlack,
+		},
+		"Rock",
+		false,
 	}
 
-	GroundCell = &termbox.Cell{
-		Ch: ' ',
-		Fg: termbox.ColorDefault,
-		Bg: termbox.ColorDefault,
+	GroundObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: ' ',
+			Fg: termbox.ColorDefault,
+			Bg: termbox.ColorDefault,
+		},
+		"Ground",
+		true,
 	}
 
-	PlayerCell = &termbox.Cell{
-		Ch: '♨',
-		Fg: termbox.ColorWhite,
-		Bg: termbox.ColorMagenta,
+	BombObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: 'ß',
+			Fg: termbox.ColorRed,
+			Bg: termbox.ColorDefault,
+		},
+		"Bomb",
+		false,
 	}
 
-	BombCell = &termbox.Cell{
-		Ch: 'ß',
-		Fg: termbox.ColorRed,
-		Bg: termbox.ColorDefault,
+	FlameObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: '+',
+			Fg: termbox.ColorRed,
+			Bg: termbox.ColorDefault,
+		},
+		"Flame",
+		true,
 	}
 
-	FlameCell = &termbox.Cell{
-		Ch: '+',
-		Fg: termbox.ColorRed,
-		Bg: termbox.ColorDefault,
+	BombPUObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: 'Ⓑ',
+			Fg: termbox.ColorYellow,
+			Bg: termbox.ColorMagenta,
+		},
+		"PowerUp(Bomb)",
+		true,
 	}
 
-	BombPUCell = &termbox.Cell{
-		Ch: 'Ⓑ',
-		Fg: termbox.ColorYellow,
-		Bg: termbox.ColorMagenta,
-	}
-
-	RadiusPUCell = &termbox.Cell{
-		Ch: 'Ⓡ',
-		Fg: termbox.ColorYellow,
-		Bg: termbox.ColorMagenta,
+	RadiusPUObj = &TboxGameObj{
+		&termbox.Cell{
+			Ch: 'Ⓡ',
+			Fg: termbox.ColorYellow,
+			Bg: termbox.ColorMagenta,
+		},
+		"PowerUp(Radius)",
+		true,
 	}
 
 	leftTopCorner = PlayerState{
-		Name:      "p1",
-		X:         MinX,
-		Y:         MinY,
-		Bombs:     0,
-		MaxBomb:   DefaultMaxBomb,
-		MaxRadius: DefaultBombRadius,
-		Alive:     true,
+		Name:       "p1",
+		X:          MinX,
+		Y:          MinY,
+		Bombs:      0,
+		MaxBomb:    DefaultMaxBomb,
+		MaxRadius:  DefaultBombRadius,
+		Alive:      true,
+		GameObject: &TboxPlayerObj{"p1"},
 	}
 
 	rightBottomCorner = PlayerState{
-		Name:      "p2",
-		X:         MaxX,
-		Y:         MaxY,
-		Bombs:     0,
-		MaxBomb:   DefaultMaxBomb,
-		MaxRadius: DefaultBombRadius,
-		Alive:     true,
+		Name:       "p2",
+		X:          MaxX,
+		Y:          MaxY,
+		Bombs:      0,
+		MaxBomb:    DefaultMaxBomb,
+		MaxRadius:  DefaultBombRadius,
+		Alive:      true,
+		GameObject: &TboxPlayerObj{"p2"},
 	}
 
 	leftBottomCorner = PlayerState{
-		Name:      "p3",
-		X:         MinX,
-		Y:         MaxY,
-		Bombs:     0,
-		MaxBomb:   DefaultMaxBomb,
-		MaxRadius: DefaultBombRadius,
-		Alive:     true,
+		Name:       "p3",
+		X:          MinX,
+		Y:          MaxY,
+		Bombs:      0,
+		MaxBomb:    DefaultMaxBomb,
+		MaxRadius:  DefaultBombRadius,
+		Alive:      true,
+		GameObject: &TboxPlayerObj{"p3"},
 	}
 
 	rightTopCorner = PlayerState{
-		Name:      "p4",
-		X:         MaxX,
-		Y:         MinY,
-		Bombs:     0,
-		MaxBomb:   DefaultMaxBomb,
-		MaxRadius: DefaultBombRadius,
-		Alive:     false,
+		Name:       "p4",
+		X:          MaxX,
+		Y:          MinY,
+		Bombs:      0,
+		MaxBomb:    DefaultMaxBomb,
+		MaxRadius:  DefaultBombRadius,
+		Alive:      true,
+		GameObject: &TboxPlayerObj{"p4"},
 	}
 )
 
@@ -150,13 +214,14 @@ func main() {
 	localPlayer, inputChan := initLocalPlayer(*localState)
 
 	game.players = map[*PlayerState]Player{
-		localState:         localPlayer,
-		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
-		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+		localState: localPlayer,
+		// &rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
+		// &leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+		&rightTopCorner: NewImmobilePlayer(rightTopCorner),
 	}
 
 	log.Debugf("Setup board.")
-	board := SetupBoard(game.players)
+	board := SetupBoard(game)
 	for state := range game.players {
 		state.CurBoard = board.Clone()
 	}
@@ -336,23 +401,38 @@ func move(game *Game, board *Board, pState *PlayerState, action PlayerMove) {
 		return
 	}
 
-	pickPowerUps(board, pState, nextX, nextY)
-
-	if board[nextX][nextY] == FlameCell {
+	if board[nextX][nextY].Top() == FlameObj {
 		pState.Alive = false
 		log.Infof("[%s] Died moving into flame.", pState.Name)
+		cell := board[pState.X][pState.Y]
+		if !cell.Remove(pState.GameObject) {
+			log.Panicf("[%s] player not found at (%d, %d), cell=%#v",
+				pState.Name, pState.X, pState.Y, cell)
+		}
+		return
 	}
+
+	pState.LastX, pState.LastY = pState.X, pState.Y
 	pState.X, pState.Y = nextX, nextY
+
+	pickPowerUps(board, pState, nextX, nextY)
+
+	cell := board[pState.LastX][pState.LastY]
+	if !cell.Remove(pState.GameObject) {
+		log.Panicf("[%s] player not found at (%d, %d), cell=%#v",
+			pState.Name, pState.X, pState.Y, cell)
+	}
+	board[nextX][nextY].Push(pState.GameObject)
 }
 
 func pickPowerUps(board *Board, pState *PlayerState, x, y int) {
-	switch board[x][y] {
-	case BombPUCell:
+	switch board[x][y].Top() {
+	case BombPUObj:
 		pState.MaxBomb++
-		board[x][y] = GroundCell
-	case RadiusPUCell:
+		board[x][y].Pop()
+	case RadiusPUObj:
 		pState.MaxRadius++
-		board[x][y] = GroundCell
+		board[x][y].Pop()
 	}
 }
 
