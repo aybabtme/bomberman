@@ -8,7 +8,7 @@ import (
 
 type Board [MaxX + 2][MaxY + 2]*cell.Cell
 
-func (board *Board) setupMap() (free, used int) {
+func (board *Board) setupMap() (free int) {
 	board.forEachIndex(func(_ *cell.Cell, x, y int) {
 		board[x][y] = cell.NewCell(GroundObj, x, y)
 		switch {
@@ -17,7 +17,6 @@ func (board *Board) setupMap() (free, used int) {
 			y == 0 || y == len(board[0])-1, // Top and bottom
 			y%2 == 0 && x%2 == 0:           // Every second cell
 			board[x][y].Push(WallObj)
-			used++
 		default:
 			free++
 		}
@@ -25,33 +24,27 @@ func (board *Board) setupMap() (free, used int) {
 	return
 }
 
-func SetupBoard(game *Game) *Board {
-	board := &Board{}
-
-	free, _ := board.setupMap()
-
-	needRock := free * RockPercentage
+func (board *Board) setupRocks(freeCells int) int {
+	needRock := freeCells * RockPercentage
 	rockPlaced := 0
 	rockProb := func(rockLeft, freeCell int) float32 {
 		return float32(rockLeft) / float32(freeCell) / 100.0
 	}
 
-	putRock := func(cell *cell.Cell) {
-		needRock--
-		rockPlaced++
-		cell.Push(RockObj)
-	}
-
 	groundTest := func(c *cell.Cell) bool { return c.Top() == GroundObj }
+
 	board.filter(groundTest, func(c *cell.Cell) {
-		dice := rand.Float32()
-		prob := rockProb(needRock, free)
-		if dice < prob {
-			putRock(c)
+		if rand.Float32() < rockProb(needRock, freeCells) {
+			needRock--
+			rockPlaced++
+			c.Push(RockObj)
 		}
 	})
+	return rockPlaced
+}
 
-	for state := range game.players {
+func (board *Board) clearAroundPlayers(players map[*PlayerState]Player) (removed int) {
+	for state := range players {
 		if !state.Alive {
 			continue
 		}
@@ -60,50 +53,40 @@ func SetupBoard(game *Game) *Board {
 		board.asSquare(x, y, 5, func(cell *cell.Cell) {
 			if cell.Top() == RockObj {
 				cell.Pop()
-				rockPlaced--
+				removed++
 			}
 		})
 		board[x][y].Push(state.GameObject)
 	}
+	return
+}
 
-	bombProb := func(bombLeft, freeRocks int) float32 {
-		return float32(bombLeft) / float32(freeRocks)
-	}
+func SetupBoard(game *Game) *Board {
+	board := &Board{}
 
-	radiusProb := func(radiusLeft, freeRocks int) float32 {
-		return float32(radiusLeft) / float32(freeRocks)
-	}
+	freeCells := board.setupMap()
+	rockPlaced := board.setupRocks(freeCells)
+	cleared := board.clearAroundPlayers(game.players)
+	rockPlaced -= cleared
 
-	rocksForBomb := rockPlaced / 2
-	rocksForRadius := rockPlaced / 2
+	bombRocksLeft := rockPlaced / 2
+	radiusRocksLeft := rockPlaced / 2
 
-	putBombPU := func(c *cell.Cell) {
-		if rand.Float32() < bombProb(game.bombPULeft, rocksForBomb) {
-			game.bombPULeft--
-			c.Push(BombPUObj)
+	onlyRocks := func(c *cell.Cell) bool { return c.Top() == RockObj }
+
+	putPwrUpUnder := func(c *cell.Cell) {
+		rock, _ := c.Pop()
+		switch rand.Intn(2) {
+		case 0:
+			game.probablyPutRadiusUP(c, radiusRocksLeft)
+			radiusRocksLeft--
+		case 1:
+			game.probablyPutBombUP(c, bombRocksLeft)
+			bombRocksLeft--
 		}
-		rocksForBomb--
+		c.Push(rock)
 	}
-
-	putRadiusPU := func(c *cell.Cell) {
-		if rand.Float32() < radiusProb(game.rangePULeft, rocksForRadius) {
-			game.rangePULeft--
-			c.Push(RadiusPUObj)
-		}
-		rocksForRadius--
-	}
-
-	board.filter(func(c *cell.Cell) bool { return c.Top() == RockObj },
-		func(c *cell.Cell) {
-			// rock, _ := c.Pop()
-			switch rand.Intn(2) {
-			case 0:
-				putBombPU(c)
-			case 1:
-				putRadiusPU(c)
-			}
-			// c.Push(rock)
-		})
+	board.filter(onlyRocks, putPwrUpUnder)
 
 	return board
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/aybabtme/bomberman/cell"
 	"github.com/aybabtme/bomberman/logger"
 	"github.com/aybabtme/bomberman/scheduler"
 	"github.com/nsf/termbox-go"
@@ -24,9 +25,9 @@ const (
 	DefaultBombRadius = 2
 
 	TurnDuration     = time.Millisecond * 10
-	TurnsToFlamout   = 70 / 3
-	TurnsToReplenish = 250 / 3
-	TurnsToExplode   = 200 / 3
+	TurnsToFlamout   = 70 / 1
+	TurnsToReplenish = 250 / 1
+	TurnsToExplode   = 200 / 1
 )
 
 type TboxGameObj struct {
@@ -185,8 +186,22 @@ type Game struct {
 
 	players map[*PlayerState]Player
 
-	h, w                    int
-	bombPULeft, rangePULeft int
+	h, w                     int
+	bombPULeft, radiusPULeft int
+}
+
+func (g *Game) probablyPutRadiusUP(c *cell.Cell, rocksToUse int) {
+	if rand.Float32() < float32(g.radiusPULeft)/float32(rocksToUse) {
+		g.radiusPULeft--
+		c.Push(RadiusPUObj)
+	}
+}
+
+func (g *Game) probablyPutBombUP(c *cell.Cell, rocksToUse int) {
+	if rand.Float32() < float32(g.bombPULeft)/float32(rocksToUse) {
+		g.bombPULeft--
+		c.Push(BombPUObj)
+	}
 }
 
 var (
@@ -197,11 +212,11 @@ func main() {
 	log.Infof("Starting Bomberman")
 
 	game := &Game{
-		schedule:    scheduler.NewScheduler(),
-		turnTick:    time.NewTicker(TurnDuration),
-		done:        false,
-		bombPULeft:  TotalBombPU,
-		rangePULeft: TotalRadiusPU,
+		schedule:     scheduler.NewScheduler(),
+		turnTick:     time.NewTicker(TurnDuration),
+		done:         false,
+		bombPULeft:   TotalBombPU,
+		radiusPULeft: TotalRadiusPU,
 	}
 
 	log.Debugf("Initializing local player.")
@@ -209,10 +224,10 @@ func main() {
 	localPlayer, inputChan := initLocalPlayer(*localState)
 
 	game.players = map[*PlayerState]Player{
-		localState: localPlayer,
-		// &rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
-		// &leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner: NewImmobilePlayer(rightTopCorner),
+		localState:         localPlayer,
+		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
+		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+		&rightTopCorner:    NewImmobilePlayer(rightTopCorner),
 	}
 
 	log.Debugf("Setup board.")
@@ -235,7 +250,12 @@ func main() {
 		for {
 			ev := termbox.PollEvent()
 			if pm, ok := toPlayerMove(ev); ok {
-				inputChan <- pm
+				select {
+				case inputChan <- pm:
+				default:
+					log.Debugf("Dropping event '%#v', player not reading.", ev.Type)
+				}
+
 			} else {
 				evChan <- ev
 			}
@@ -275,7 +295,7 @@ func main() {
 }
 
 func initLocalPlayer(state PlayerState) (Player, chan<- PlayerMove) {
-	keyPlayerChan := make(chan PlayerMove)
+	keyPlayerChan := make(chan PlayerMove, 1)
 	keyPlayer := NewInputPlayer(state, keyPlayerChan)
 	return keyPlayer, keyPlayerChan
 }
