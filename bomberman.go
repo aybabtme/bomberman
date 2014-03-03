@@ -27,8 +27,8 @@ const (
 	TotalRadiusPU = 20
 	TotalBombPU   = 20
 
-	DefaultMaxBomb    = 1
-	DefaultBombRadius = 2
+	DefaultMaxBomb    = 3
+	DefaultBombRadius = 3
 
 	TurnDuration     = time.Millisecond * 10
 	TurnsToFlamout   = 70

@@ -113,8 +113,6 @@ func removeFlame(board *Board, x, y, radius int) {
 		}
 		if c.Top() == RockObj {
 			c.Pop()
-			// Stop removing rocks here after first encounter
-			return false
 		}
 		return true
 	})
