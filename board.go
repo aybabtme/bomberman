@@ -8,6 +8,36 @@ import (
 
 type Board [MaxX + 2][MaxY + 2]*cell.Cell
 
+func SetupBoard(game *Game) *Board {
+	board := &Board{}
+
+	freeCells := board.setupMap()
+	rockPlaced := board.setupRocks(freeCells)
+	cleared := board.clearAroundPlayers(game.players)
+	rockPlaced -= cleared
+
+	bombRocksLeft := rockPlaced / 2
+	radiusRocksLeft := rockPlaced / 2
+
+	onlyRocks := func(c *cell.Cell) bool { return c.Top() == RockObj }
+
+	putPwrUpUnder := func(c *cell.Cell) {
+		rock, _ := c.Pop()
+		switch rand.Intn(2) {
+		case 0:
+			game.probablyPutRadiusUP(c, radiusRocksLeft)
+			radiusRocksLeft--
+		case 1:
+			game.probablyPutBombUP(c, bombRocksLeft)
+			bombRocksLeft--
+		}
+		c.Push(rock)
+	}
+	board.filter(onlyRocks, putPwrUpUnder)
+
+	return board
+}
+
 func (board *Board) setupMap() (free int) {
 	board.forEachIndex(func(_ *cell.Cell, x, y int) {
 		board[x][y] = cell.NewCell(GroundObj, x, y)
@@ -59,36 +89,6 @@ func (board *Board) clearAroundPlayers(players map[*PlayerState]Player) (removed
 		board[x][y].Push(state.GameObject)
 	}
 	return
-}
-
-func SetupBoard(game *Game) *Board {
-	board := &Board{}
-
-	freeCells := board.setupMap()
-	rockPlaced := board.setupRocks(freeCells)
-	cleared := board.clearAroundPlayers(game.players)
-	rockPlaced -= cleared
-
-	bombRocksLeft := rockPlaced / 2
-	radiusRocksLeft := rockPlaced / 2
-
-	onlyRocks := func(c *cell.Cell) bool { return c.Top() == RockObj }
-
-	putPwrUpUnder := func(c *cell.Cell) {
-		rock, _ := c.Pop()
-		switch rand.Intn(2) {
-		case 0:
-			game.probablyPutRadiusUP(c, radiusRocksLeft)
-			radiusRocksLeft--
-		case 1:
-			game.probablyPutBombUP(c, bombRocksLeft)
-			bombRocksLeft--
-		}
-		c.Push(rock)
-	}
-	board.filter(onlyRocks, putPwrUpUnder)
-
-	return board
 }
 
 func (b *Board) Traversable(x, y int) bool {
@@ -151,37 +151,50 @@ func (b *Board) asSquare(x, y, rad int, apply func(*cell.Cell)) {
 	}
 }
 
-func (b *Board) asCross(x, y, dist int, apply func(int, int)) {
+func (b *Board) asCross(x, y, dist int, apply func(*cell.Cell) bool) {
 	// (x,y) and to the right
+	var c *cell.Cell
 	for i := x; i < min(x+dist, len(b)); i++ {
-		if b[i][y].Top() == WallObj {
+		c = b[i][y]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(i, y)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// left of (x,y)
 	for i := x - 1; i > max(x-dist, 0); i-- {
-		if b[i][y].Top() == WallObj {
+		c = b[i][y]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(i, y)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// below (x,y)
 	for j := y + 1; j < min(y+dist, len(b)); j++ {
-		if b[x][j].Top() == WallObj {
+		c = b[x][j]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(x, j)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// above (x,y)
 	for j := y - 1; j > max(y-dist, 0); j-- {
-		if b[x][j].Top() == WallObj {
+		c = b[x][j]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(x, j)
+		if !apply(c) {
+			break
+		}
 	}
 }
 

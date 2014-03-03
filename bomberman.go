@@ -18,8 +18,8 @@ const (
 	MaxY           = 21
 	RockPercentage = 50
 
-	TotalRadiusPU = 10
-	TotalBombPU   = 10
+	TotalRadiusPU = 125
+	TotalBombPU   = 125
 
 	DefaultMaxBomb    = 1
 	DefaultBombRadius = 2

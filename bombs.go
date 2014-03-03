@@ -74,31 +74,48 @@ func placeBomb(board *Board, game *Game, placerState *PlayerState) {
 
 func explode(game *Game, board *Board, explodeX, explodeY, radius int) {
 	board[explodeX][explodeY].Remove(BombObj)
-	board.asCross(explodeX, explodeY, radius, func(cellX, cellY int) {
+	board.asCross(explodeX, explodeY, radius, func(c *cell.Cell) bool {
 
 		for playerState, player := range game.players {
 			x, y := playerState.X, playerState.Y
-			if cellX == x && cellY == y {
+			if c.X == x && c.Y == y {
 				log.Infof("[%s] Dying in explosion.", player.Name())
 				playerState.Alive = false
 			}
 		}
 
-		if board[cellX][cellY].Top() != WallObj {
-			board[cellX][cellY].Push(FlameObj)
+		switch c.Top() {
+		case WallObj:
+		case RockObj:
+			c.Push(FlameObj)
+			return false
+		case BombPUObj, RadiusPUObj: // Explosions kill PowerUps
+			c.Pop()
+			c.Push(FlameObj)
+			return false
+		default:
+			c.Push(FlameObj)
+			return true
 		}
+
+		if c.Top() != WallObj {
+			c.Push(FlameObj)
+		}
+
+		return true
 	})
 }
 
 func removeFlame(board *Board, x, y, radius int) {
-	var cell *cell.Cell
-	board.asCross(x, y, radius, func(cellX, cellY int) {
-		cell = board[cellX][cellY]
-		if cell.Top() == FlameObj {
-			cell.Pop()
+	board.asCross(x, y, radius, func(c *cell.Cell) bool {
+		if c.Top() == FlameObj {
+			c.Pop()
 		}
-		if cell.Top() == RockObj {
-			cell.Pop()
+		if c.Top() == RockObj {
+			c.Pop()
+			// Stop removing rocks here after first encounter
+			return false
 		}
+		return true
 	})
 }
