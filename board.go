@@ -46,7 +46,7 @@ func SetupBoard(game *Game) *Board {
 	board.filter(groundTest, func(c *cell.Cell) {
 		dice := rand.Float32()
 		prob := rockProb(needRock, free)
-		if dice > prob {
+		if dice < prob {
 			putRock(c)
 		}
 	})
@@ -67,44 +67,42 @@ func SetupBoard(game *Game) *Board {
 	}
 
 	bombProb := func(bombLeft, freeRocks int) float32 {
-		log.Debugf("bombLeft=%d, freeRocks=%d", bombLeft, freeRocks)
-		return float32(bombLeft) / float32(freeRocks) / 100.0
+		return float32(bombLeft) / float32(freeRocks)
 	}
 
 	radiusProb := func(radiusLeft, freeRocks int) float32 {
-		return float32(radiusLeft) / float32(freeRocks) / 100.0
+		return float32(radiusLeft) / float32(freeRocks)
 	}
 
 	rocksForBomb := rockPlaced / 2
 	rocksForRadius := rockPlaced / 2
 
-	board.filter(func(c *cell.Cell) bool {
-		return c.Top() == RockObj && game.bombPULeft > 0 && game.rangePULeft > 0
-	},
+	putBombPU := func(c *cell.Cell) {
+		if rand.Float32() < bombProb(game.bombPULeft, rocksForBomb) {
+			game.bombPULeft--
+			c.Push(BombPUObj)
+		}
+		rocksForBomb--
+	}
+
+	putRadiusPU := func(c *cell.Cell) {
+		if rand.Float32() < radiusProb(game.rangePULeft, rocksForRadius) {
+			game.rangePULeft--
+			c.Push(RadiusPUObj)
+		}
+		rocksForRadius--
+	}
+
+	board.filter(func(c *cell.Cell) bool { return c.Top() == RockObj },
 		func(c *cell.Cell) {
+			// rock, _ := c.Pop()
 			switch rand.Intn(2) {
 			case 0:
-				prob := bombProb(game.bombPULeft, rocksForBomb)
-				dice := rand.Float32()
-				log.Debugf("P(%2f) Trying to put bombPU, dice=%0.2f", prob, dice)
-				if dice > prob && game.bombPULeft > 0 {
-					rocksForBomb--
-					game.bombPULeft--
-					rock, _ := c.Pop()
-					c.Push(BombPUObj)
-					c.Push(rock)
-				}
+				putBombPU(c)
 			case 1:
-				prob := radiusProb(game.rangePULeft, rocksForRadius)
-				dice := rand.Float32()
-				if dice > prob && game.rangePULeft > 0 {
-					rocksForRadius--
-					game.rangePULeft--
-					rock, _ := c.Pop()
-					c.Push(RadiusPUObj)
-					c.Push(rock)
-				}
+				putRadiusPU(c)
 			}
+			// c.Push(rock)
 		})
 
 	return board
