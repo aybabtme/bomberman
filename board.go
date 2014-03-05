@@ -1,65 +1,110 @@
 package main
 
 import (
+	"github.com/aybabtme/bomberman/cell"
 	"github.com/nsf/termbox-go"
 	"math/rand"
 )
 
-type Board [MaxX + 2][MaxY + 2]*termbox.Cell
+type Board [MaxX + 2][MaxY + 2]*cell.Cell
 
-func SetupBoard(players map[*PlayerState]Player) *Board {
+func SetupBoard(game *Game) *Board {
 	board := &Board{}
 
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			switch {
-			case i == 0 || i == len(board)-1:
-				board[i][j] = WallCell
-			case j == 0 || j == len(board[0])-1:
-				board[i][j] = WallCell
-			case j%2 == 0 && i%2 == 0:
-				board[i][j] = WallCell
-			default:
-				if rand.Intn(100) < 100-WallPercentage {
-					board[i][j] = GroundCell
-				} else {
-					board[i][j] = RockCell
-				}
-			}
+	freeCells := board.setupMap()
+	rockPlaced := board.setupRocks(freeCells)
+	cleared := board.clearAroundPlayers(game.players, RockFreeArea)
+	rockPlaced -= cleared
+
+	bombRocksLeft := rockPlaced / 2
+	radiusRocksLeft := rockPlaced / 2
+
+	onlyRocks := func(c *cell.Cell) bool { return c.Top() == RockObj }
+
+	putPwrUpUnder := func(c *cell.Cell) {
+		rock, _ := c.Pop()
+		switch rand.Intn(2) {
+		case 0:
+			game.probablyPutRadiusUP(c, radiusRocksLeft)
+			radiusRocksLeft--
+		case 1:
+			game.probablyPutBombUP(c, bombRocksLeft)
+			bombRocksLeft--
 		}
+		c.Push(rock)
+	}
+	board.filter(onlyRocks, putPwrUpUnder)
+
+	return board
+}
+
+func (board *Board) setupMap() (free int) {
+	board.forEachIndex(func(_ *cell.Cell, x, y int) {
+		board[x][y] = cell.NewCell(GroundObj, x, y)
+		switch {
+		case
+			x == 0 || x == len(board)-1,    // Left and right
+			y == 0 || y == len(board[0])-1, // Top and bottom
+			y%2 == 0 && x%2 == 0:           // Every second cell
+			board[x][y].Push(WallObj)
+		default:
+			free++
+		}
+	})
+	return
+}
+
+func (board *Board) setupRocks(freeCells int) int {
+	needRock := freeCells * RockPercentage
+	rockPlaced := 0
+	rockProb := func(rockLeft, freeCell int) float32 {
+		return float32(rockLeft) / float32(freeCell) / 100.0
 	}
 
+	groundTest := func(c *cell.Cell) bool { return c.Top() == GroundObj }
+
+	board.filter(groundTest, func(c *cell.Cell) {
+		if rand.Float32() < rockProb(needRock, freeCells) {
+			needRock--
+			rockPlaced++
+			c.Push(RockObj)
+		}
+	})
+	return rockPlaced
+}
+
+func (board *Board) clearAroundPlayers(players map[*PlayerState]Player, radius int) (removed int) {
 	for state := range players {
 		if !state.Alive {
 			continue
 		}
 
 		x, y := state.X, state.Y
-		board.asSquare(x, y, 1, func(cellX, cellY int) {
-			if board[cellX][cellY] == RockCell {
-				board[cellX][cellY] = GroundCell
+		board.asSquare(x, y, radius, func(cell *cell.Cell) {
+			if cell.Top() == RockObj {
+				cell.Pop()
+				removed++
 			}
 		})
+		board[x][y].Push(state.GameObject)
 	}
+	return
+}
 
-	return board
+func (b *Board) Traversable(x, y int) bool {
+	return b[x][y].Top().Traversable()
 }
 
 func (board *Board) draw(players map[*PlayerState]Player) {
-	for i := 0; i < len(board); i++ {
-		for j := 0; j < len(board[0]); j++ {
-			cell := board[i][j]
-			termbox.SetCell(i*2, j, cell.Ch, cell.Fg, cell.Bg)
-			termbox.SetCell(i*2+1, j, cell.Ch, cell.Fg, cell.Bg)
-		}
-	}
+	board.forEach(func(c *cell.Cell) {
+		c.Top().Draw(c.X, c.Y)
+	})
 
-	for state, player := range players {
+	for state := range players {
 		if !state.Alive {
+			board[state.X][state.Y].Remove(state.GameObject)
 			continue
 		}
-		termbox.SetCell(state.X*2, state.Y, []rune(player.Name())[0], PlayerCell.Fg, PlayerCell.Bg)
-		termbox.SetCell(state.X*2+1, state.Y, []rune(player.Name())[1], PlayerCell.Fg, PlayerCell.Bg)
 	}
 
 	termbox.Flush()
@@ -67,55 +112,93 @@ func (board *Board) draw(players map[*PlayerState]Player) {
 
 func (b *Board) Clone() Board {
 	clone := Board{}
-	for i := range b {
-		for j := range b[i] {
-			clone[i][j] = &(*b[i][j])
-		}
-	}
+	b.forEach(func(c *cell.Cell) {
+		clone[c.X][c.Y] = cell.NewCell(c.Top(), c.X, c.Y)
+	})
 	return clone
 }
 
-func (b *Board) asSquare(x, y, rad int, apply func(int, int)) {
-	for i := max(x-rad, 0); i <= min(x+rad, len(b)-1); i++ {
-		for j := max(y-rad, 0); j <= min(y+rad, len(b[0])-1); j++ {
-			apply(i, j)
+///////////
+// Helpers
+
+// functional iterations
+
+func (b *Board) forEachIndex(apply func(*cell.Cell, int, int)) {
+	for x, inner := range b {
+		for y, cell := range inner {
+			apply(cell, x, y)
 		}
 	}
 }
 
-func (b *Board) asCross(x, y, dist int, apply func(int, int)) {
+func (b *Board) forEach(apply func(*cell.Cell)) {
+	b.forEachIndex(func(c *cell.Cell, x, y int) { apply(c) })
+}
+
+func (b *Board) filter(test func(*cell.Cell) bool, apply func(*cell.Cell)) {
+	b.forEach(func(cell *cell.Cell) {
+		if test(cell) {
+			apply(cell)
+		}
+	})
+}
+
+func (b *Board) asSquare(x, y, rad int, apply func(*cell.Cell)) {
+	for i := max(x-rad, 0); i <= min(x+rad, len(b)-1); i++ {
+		for j := max(y-rad, 0); j <= min(y+rad, len(b[0])-1); j++ {
+			apply(b[i][j])
+		}
+	}
+}
+
+func (b *Board) asCross(x, y, dist int, apply func(*cell.Cell) bool) {
 	// (x,y) and to the right
+	var c *cell.Cell
 	for i := x; i < min(x+dist, len(b)); i++ {
-		if b[i][y] == WallCell {
+		c = b[i][y]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(i, y)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// left of (x,y)
 	for i := x - 1; i > max(x-dist, 0); i-- {
-		if b[i][y] == WallCell {
+		c = b[i][y]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(i, y)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// below (x,y)
 	for j := y + 1; j < min(y+dist, len(b)); j++ {
-		if b[x][j] == WallCell {
+		c = b[x][j]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(x, j)
+		if !apply(c) {
+			break
+		}
 	}
 
 	// above (x,y)
 	for j := y - 1; j > max(y-dist, 0); j-- {
-		if b[x][j] == WallCell {
+		c = b[x][j]
+		if c.Top() == WallObj {
 			break
 		}
-		apply(x, j)
+		if !apply(c) {
+			break
+		}
 	}
 }
+
+// Integer math
 
 func min(n, m int) int {
 	if n < m {

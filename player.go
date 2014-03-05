@@ -1,16 +1,18 @@
 package main
 
 import (
+	"github.com/aybabtme/bomberman/cell"
 	"math/rand"
 	"time"
 )
 
 type PlayerState struct {
-	Name                     string
-	X, Y                     int
-	Bombs, MaxBomb, MaxRange int
-	Alive                    bool
-	CurBoard                 Board
+	Name                      string
+	X, Y, LastX, LastY        int
+	Bombs, MaxBomb, MaxRadius int
+	Alive                     bool
+	CurBoard                  Board
+	GameObject                cell.GameObject
 }
 
 type PlayerMove string
@@ -28,6 +30,9 @@ type Player interface {
 	Move() <-chan PlayerMove
 	Update() chan<- PlayerState
 }
+
+///////////////////////
+// Human
 
 type InputPlayer struct {
 	state PlayerState
@@ -178,5 +183,31 @@ func (w *WanderingPlayer) Move() <-chan PlayerMove {
 }
 
 func (w *WanderingPlayer) Update() chan<- PlayerState {
+	return w.update
+}
+
+type ImmobilePlayer struct {
+	state   PlayerState
+	update  chan PlayerState
+	outMove chan PlayerMove
+}
+
+func NewImmobilePlayer(state PlayerState) *ImmobilePlayer {
+	return &ImmobilePlayer{
+		state:   state,
+		update:  make(chan PlayerState),
+		outMove: make(chan PlayerMove, 1),
+	}
+}
+
+func (w *ImmobilePlayer) Name() string {
+	return w.state.Name
+}
+
+func (w *ImmobilePlayer) Move() <-chan PlayerMove {
+	return w.outMove
+}
+
+func (w *ImmobilePlayer) Update() chan<- PlayerState {
 	return w.update
 }

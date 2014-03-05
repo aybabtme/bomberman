@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/aybabtme/bomberman/cell"
 )
 
 // Bombs!
-func placeBomb(board *Board, states map[*PlayerState]Player, placerState *PlayerState) {
-	placer := states[placerState]
+func placeBomb(board *Board, game *Game, placerState *PlayerState) {
+	placer := game.players[placerState]
 	log.Debugf("[%s] Attempting to place bomb (%d/%d).",
 		placer.Name(), placerState.Bombs, placerState.MaxBomb)
 
@@ -22,9 +23,9 @@ func placeBomb(board *Board, states map[*PlayerState]Player, placerState *Player
 
 	x, y := placerState.X, placerState.Y
 	// radius is snapshot'd at this point in time
-	radius := placerState.MaxRange
+	radius := placerState.MaxRadius
 
-	board[x][y] = BombCell
+	board[x][y].Push(BombObj)
 
 	replenishBomb := func(turn int) error {
 		if placerState.Bombs > 0 {
@@ -44,17 +45,17 @@ func placeBomb(board *Board, states map[*PlayerState]Player, placerState *Player
 	doExplosion := func(turn int) error {
 		log.Debugf("[%s] Bomb exploding.", placer.Name())
 
-		explode(states, board, x, y, radius)
+		explode(game, board, x, y, radius)
 
 		log.Debugf("[%s] Registering flameout.", placer.Name())
-		schedule.Register(&BomberAction{
+		game.schedule.Register(&BomberAction{
 			name:     fmt.Sprintf("%s.doFlameout", placer.Name()),
 			duration: 1,
 			doTurn:   doFlameout,
 		}, TurnsToFlamout)
 
 		log.Debugf("[%s] Registering bomb replenishment.", placer.Name())
-		schedule.Register(&BomberAction{
+		game.schedule.Register(&BomberAction{
 			name:     fmt.Sprintf("%s.replenishBomb", placer.Name()),
 			duration: 1,
 			doTurn:   replenishBomb,
@@ -64,35 +65,55 @@ func placeBomb(board *Board, states map[*PlayerState]Player, placerState *Player
 	}
 
 	log.Debugf("[%s] Registering bomb explosion.", placer.Name())
-	schedule.Register(&BomberAction{
+	game.schedule.Register(&BomberAction{
 		name:     fmt.Sprintf("%s.doExplosion", placer.Name()),
 		duration: 1,
 		doTurn:   doExplosion,
 	}, TurnsToExplode)
 }
 
-func explode(states map[*PlayerState]Player, board *Board, explodeX, explodeY, radius int) {
-	board[explodeX][explodeY] = GroundCell
-	board.asCross(explodeX, explodeY, radius, func(cellX, cellY int) {
+func explode(game *Game, board *Board, explodeX, explodeY, radius int) {
+	board[explodeX][explodeY].Remove(BombObj)
+	board.asCross(explodeX, explodeY, radius, func(c *cell.Cell) bool {
 
-		for playerState, player := range states {
+		for playerState, player := range game.players {
 			x, y := playerState.X, playerState.Y
-			if cellX == x && cellY == y {
+			if c.X == x && c.Y == y {
 				log.Infof("[%s] Dying in explosion.", player.Name())
 				playerState.Alive = false
 			}
 		}
 
-		if board[cellX][cellY] != WallCell {
-			board[cellX][cellY] = FlameCell
+		switch c.Top() {
+		case WallObj:
+		case RockObj:
+			c.Push(FlameObj)
+			return false
+		case BombPUObj, RadiusPUObj: // Explosions kill PowerUps
+			c.Pop()
+			c.Push(FlameObj)
+			return false
+		default:
+			c.Push(FlameObj)
+			return true
 		}
+
+		if c.Top() != WallObj {
+			c.Push(FlameObj)
+		}
+
+		return true
 	})
 }
 
 func removeFlame(board *Board, x, y, radius int) {
-	board.asCross(x, y, radius, func(cellX, cellY int) {
-		if board[cellX][cellY] == FlameCell {
-			board[cellX][cellY] = GroundCell
+	board.asCross(x, y, radius, func(c *cell.Cell) bool {
+		if c.Top() == FlameObj {
+			c.Pop()
 		}
+		if c.Top() == RockObj {
+			c.Pop()
+		}
+		return true
 	})
 }
