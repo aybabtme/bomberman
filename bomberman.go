@@ -1,11 +1,17 @@
 package main
 
 import (
-	"github.com/aybabtme/bomberman/cell"
+	"github.com/aybabtme/bomberman/board"
+	"github.com/aybabtme/bomberman/game"
 	"github.com/aybabtme/bomberman/logger"
+	"github.com/aybabtme/bomberman/objects"
+	"github.com/aybabtme/bomberman/player"
+	"github.com/aybabtme/bomberman/player/ai"
+	"github.com/aybabtme/bomberman/player/input"
 	"github.com/aybabtme/bomberman/scheduler"
 	"github.com/nsf/termbox-go"
 	"math/rand"
+	"runtime"
 	"time"
 )
 
@@ -14,15 +20,17 @@ func init() {
 }
 
 const (
-	LogLevel = logger.Debug
-
 	MinX = 1
 	MaxX = 49
 	MinY = 1
 	MaxY = 21
+)
 
-	RockFreeArea   = 1
-	RockPercentage = 50
+const (
+	LogLevel = logger.Debug
+
+	RockFreeArea = 1
+	RockDensity  = 0.50
 
 	TotalRadiusPU = 20
 	TotalBombPU   = 20
@@ -37,9 +45,11 @@ const (
 )
 
 var (
+	h, w int
+
 	log = logger.New("", "bomb.log", LogLevel)
 
-	leftTopCorner = PlayerState{
+	leftTopCorner = player.State{
 		Name:       "p1",
 		X:          MinX,
 		Y:          MinY,
@@ -47,10 +57,10 @@ var (
 		MaxBomb:    DefaultMaxBomb,
 		MaxRadius:  DefaultBombRadius,
 		Alive:      true,
-		GameObject: &TboxPlayerObj{"p1"},
+		GameObject: &objects.TboxPlayer{"p1"},
 	}
 
-	rightBottomCorner = PlayerState{
+	rightBottomCorner = player.State{
 		Name:       "p2",
 		X:          MaxX,
 		Y:          MaxY,
@@ -58,10 +68,10 @@ var (
 		MaxBomb:    DefaultMaxBomb,
 		MaxRadius:  DefaultBombRadius,
 		Alive:      true,
-		GameObject: &TboxPlayerObj{"p2"},
+		GameObject: &objects.TboxPlayer{"p2"},
 	}
 
-	leftBottomCorner = PlayerState{
+	leftBottomCorner = player.State{
 		Name:       "p3",
 		X:          MinX,
 		Y:          MaxY,
@@ -69,10 +79,10 @@ var (
 		MaxBomb:    DefaultMaxBomb,
 		MaxRadius:  DefaultBombRadius,
 		Alive:      true,
-		GameObject: &TboxPlayerObj{"p3"},
+		GameObject: &objects.TboxPlayer{"p3"},
 	}
 
-	rightTopCorner = PlayerState{
+	rightTopCorner = player.State{
 		Name:       "p4",
 		X:          MaxX,
 		Y:          MinY,
@@ -80,60 +90,31 @@ var (
 		MaxBomb:    DefaultMaxBomb,
 		MaxRadius:  DefaultBombRadius,
 		Alive:      true,
-		GameObject: &TboxPlayerObj{"p4"},
+		GameObject: &objects.TboxPlayer{"p4"},
 	}
 )
-
-type Game struct {
-	schedule *scheduler.Scheduler
-	turnTick *time.Ticker
-	done     bool
-
-	players map[*PlayerState]Player
-
-	h, w                     int
-	bombPULeft, radiusPULeft int
-}
-
-func (g *Game) probablyPutRadiusUP(c *cell.Cell, rocksToUse int) {
-	if rand.Float32() < float32(g.radiusPULeft)/float32(rocksToUse) {
-		g.radiusPULeft--
-		c.Push(RadiusPUObj)
-	}
-}
-
-func (g *Game) probablyPutBombUP(c *cell.Cell, rocksToUse int) {
-	if rand.Float32() < float32(g.bombPULeft)/float32(rocksToUse) {
-		g.bombPULeft--
-		c.Push(BombPUObj)
-	}
-}
 
 func main() {
 	log.Infof("Starting Bomberman")
 
-	game := &Game{
-		schedule:     scheduler.NewScheduler(),
-		turnTick:     time.NewTicker(TurnDuration),
-		done:         false,
-		bombPULeft:   TotalBombPU,
-		radiusPULeft: TotalRadiusPU,
-	}
+	game := game.NewGame(TurnDuration, TotalBombPU, TotalRadiusPU)
 
 	log.Debugf("Initializing local player.")
 	localState := &leftTopCorner
 	localPlayer, inputChan := initLocalPlayer(*localState)
 
-	game.players = map[*PlayerState]Player{
+	game.Players = map[*player.State]player.Player{
 		localState:         localPlayer,
-		&rightBottomCorner: NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
-		&leftBottomCorner:  NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner:    NewImmobilePlayer(rightTopCorner),
+		&rightBottomCorner: ai.NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
+		&leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+		&rightTopCorner:    ai.NewImmobilePlayer(rightTopCorner),
 	}
 
+	runtime.GOMAXPROCS(1 + len(game.Players))
+
 	log.Debugf("Setup board.")
-	board := SetupBoard(game)
-	for pState := range game.players {
+	board := board.SetupBoard(game, MaxX+2, MaxY+2, RockFreeArea, RockDensity)
+	for pState := range game.Players {
 		pState.CurBoard = board.Clone()
 	}
 
@@ -142,7 +123,7 @@ func main() {
 		panic(err)
 	}
 	defer termbox.Close()
-	game.w, game.h = termbox.Size()
+	w, h = termbox.Size()
 
 	log.Debugf("Initializing termbox event poller.")
 	evChan := make(chan termbox.Event)
@@ -164,28 +145,34 @@ func main() {
 	}()
 
 	log.Debugf("Drawing for first time.")
-	board.draw(game.players)
+	board.Draw(game.Players)
 
 	log.Debugf("Starting.")
 
-	game.mainLoop(board, evChan)
+	MainLoop(game, board, evChan)
 }
 
-func (g *Game) mainLoop(board *Board, evChan <-chan termbox.Event) {
-	for _ = range g.turnTick.C {
-		if g.done {
+func MainLoop(g *game.Game, board board.Board, evChan <-chan termbox.Event) {
+	for _ = range g.TurnTick.C {
+		if g.IsDone() {
 			log.Infof("Game requested to stop.")
 			return
 		}
 
-		g.receiveEvents(evChan)
-		g.runSchedule()
-		g.applyPlayerMoves(board)
-		board.draw(g.players)
-		updatePlayers(g.players, board)
+		receiveEvents(g, evChan)
 
-		alives := []Player{}
-		for pState, player := range g.players {
+		g.RunSchedule(func(a scheduler.Action, turn int) error {
+			act := a.(*BomberAction)
+			log.Debugf("[%s] !!! turn %d/%d", act.name, turn, act.Duration())
+			return act.doTurn(turn)
+		})
+
+		applyPlayerMoves(g, board)
+		board.Draw(g.Players)
+		updatePlayers(g, board)
+
+		alives := []player.Player{}
+		for pState, player := range g.Players {
 			if pState.Alive {
 				alives = append(alives, player)
 			}
@@ -200,34 +187,34 @@ func (g *Game) mainLoop(board *Board, evChan <-chan termbox.Event) {
 	}
 }
 
-func initLocalPlayer(pState PlayerState) (Player, chan<- PlayerMove) {
-	keyPlayerChan := make(chan PlayerMove, 1)
-	keyPlayer := NewInputPlayer(pState, keyPlayerChan)
+func initLocalPlayer(pState player.State) (player.Player, chan<- player.Move) {
+	keyPlayerChan := make(chan player.Move, 1)
+	keyPlayer := input.NewInputPlayer(pState, keyPlayerChan)
 	return keyPlayer, keyPlayerChan
 }
 
 //////////////
 // Events
 
-func (g *Game) receiveEvents(evChan <-chan termbox.Event) {
+func receiveEvents(g *game.Game, evChan <-chan termbox.Event) {
 	select {
 	case ev := <-evChan:
 		switch ev.Type {
 		case termbox.EventResize:
-			g.w, g.h = ev.Width, ev.Height
+			w, h = ev.Width, ev.Height
 		case termbox.EventError:
-			g.done = true
+			g.SetDone()
 		case termbox.EventKey:
-			g.doKey(ev.Key)
+			doKey(g, ev.Key)
 		}
 	default:
 	}
 }
 
-func (g *Game) doKey(key termbox.Key) {
+func doKey(g *game.Game, key termbox.Key) {
 	switch key {
 	case termbox.KeyCtrlC:
-		g.done = true
+		g.SetDone()
 	}
 }
 
@@ -244,37 +231,25 @@ func (a *BomberAction) Duration() int {
 	return a.duration
 }
 
-func (g *Game) runSchedule() {
-	if !g.schedule.HasNext() {
-		return
-	}
-	g.schedule.NextTurn()
-
-	g.schedule.DoTurn(func(a scheduler.Action, turn int) error {
-		act := a.(*BomberAction)
-		log.Debugf("[%s] !!! turn %d/%d", act.name, turn, act.Duration())
-		return act.doTurn(turn)
-	})
-}
-
 //////////////
 // Players
 
-func (g *Game) applyPlayerMoves(board *Board) {
-	for pState, player := range g.players {
+func applyPlayerMoves(g *game.Game, board board.Board) {
+	for pState, player := range g.Players {
 		if pState.Alive {
 			select {
 			case m := <-player.Move():
-				g.movePlayer(board, pState, m)
+				movePlayer(g, board, pState, m)
 			default:
 			}
 		}
 	}
 }
 
-func updatePlayers(players map[*PlayerState]Player, board *Board) {
-	for pState, player := range players {
+func updatePlayers(game *game.Game, board board.Board) {
+	for pState, player := range game.Players {
 		pState.CurBoard = board.Clone()
+		pState.Turn = game.Turn()
 		select {
 		case player.Update() <- *pState:
 		default:
@@ -282,39 +257,39 @@ func updatePlayers(players map[*PlayerState]Player, board *Board) {
 	}
 }
 
-func toPlayerMove(ev termbox.Event) (PlayerMove, bool) {
+func toPlayerMove(ev termbox.Event) (player.Move, bool) {
 	if ev.Type != termbox.EventKey {
-		return PlayerMove(""), false
+		return player.Move(""), false
 	}
 
 	switch ev.Key {
 	case termbox.KeyArrowUp:
-		return Up, true
+		return player.Up, true
 	case termbox.KeyArrowDown:
-		return Down, true
+		return player.Down, true
 	case termbox.KeyArrowLeft:
-		return Left, true
+		return player.Left, true
 	case termbox.KeyArrowRight:
-		return Right, true
+		return player.Right, true
 	case termbox.KeySpace:
-		return PutBomb, true
+		return player.PutBomb, true
 	}
 
-	return PlayerMove(""), false
+	return player.Move(""), false
 }
 
-func (g *Game) movePlayer(board *Board, pState *PlayerState, action PlayerMove) {
+func movePlayer(g *game.Game, board board.Board, pState *player.State, action player.Move) {
 	nextX, nextY := pState.X, pState.Y
 	switch action {
-	case Up:
+	case player.Up:
 		nextY--
-	case Down:
+	case player.Down:
 		nextY++
-	case Left:
+	case player.Left:
 		nextX--
-	case Right:
+	case player.Right:
 		nextX++
-	case PutBomb:
+	case player.PutBomb:
 		placeBomb(board, g, pState)
 	}
 
@@ -322,7 +297,7 @@ func (g *Game) movePlayer(board *Board, pState *PlayerState, action PlayerMove) 
 		return
 	}
 
-	if board[nextX][nextY].Top() == FlameObj {
+	if board[nextX][nextY].Top() == objects.Flame {
 		pState.Alive = false
 		log.Infof("[%s] Died moving into flame.", pState.Name)
 		cell := board[pState.X][pState.Y]
@@ -346,14 +321,14 @@ func (g *Game) movePlayer(board *Board, pState *PlayerState, action PlayerMove) 
 	board[nextX][nextY].Push(pState.GameObject)
 }
 
-func pickPowerUps(board *Board, pState *PlayerState, x, y int) {
+func pickPowerUps(board board.Board, pState *player.State, x, y int) {
 	c := board[x][y]
 	switch c.Top() {
-	case BombPUObj:
+	case objects.BombPU:
 		pState.MaxBomb++
 		c.Pop()
 		log.Infof("[%s] Powerup! Max bombs: %d", pState.Name, pState.MaxBomb)
-	case RadiusPUObj:
+	case objects.RadiusPU:
 		pState.MaxRadius++
 		c.Pop()
 		log.Infof("[%s] Powerup! Max radius: %d", pState.Name, pState.MaxRadius)

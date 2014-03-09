@@ -1,11 +1,20 @@
-package main
+package objects
 
 import (
+	"github.com/aybabtme/bomberman/cell"
 	"github.com/nsf/termbox-go"
 )
 
+// safety check, forces compiler to complain if they dont
+func __mustImplGameObject() []cell.GameObject {
+	return []cell.GameObject{
+		&TboxObj{},
+		&TboxPlayer{},
+	}
+}
+
 var (
-	WallObj = &TboxGameObj{
+	Wall = &TboxObj{
 		&termbox.Cell{
 			Ch: '▓',
 			Fg: termbox.ColorGreen,
@@ -15,7 +24,7 @@ var (
 		false,
 	}
 
-	RockObj = &TboxGameObj{
+	Rock = &TboxObj{
 		&termbox.Cell{
 			Ch: '▓',
 			Fg: termbox.ColorYellow,
@@ -25,7 +34,7 @@ var (
 		false,
 	}
 
-	GroundObj = &TboxGameObj{
+	Ground = &TboxObj{
 		&termbox.Cell{
 			Ch: ' ',
 			Fg: termbox.ColorDefault,
@@ -35,7 +44,7 @@ var (
 		true,
 	}
 
-	BombObj = &TboxGameObj{
+	Bomb = &TboxObj{
 		&termbox.Cell{
 			Ch: 'ß',
 			Fg: termbox.ColorRed,
@@ -45,7 +54,7 @@ var (
 		false,
 	}
 
-	FlameObj = &TboxGameObj{
+	Flame = &TboxObj{
 		&termbox.Cell{
 			Ch: '+',
 			Fg: termbox.ColorRed,
@@ -55,7 +64,7 @@ var (
 		true,
 	}
 
-	BombPUObj = &TboxGameObj{
+	BombPU = &TboxObj{
 		&termbox.Cell{
 			Ch: 'Ⓑ',
 			Fg: termbox.ColorYellow,
@@ -65,7 +74,7 @@ var (
 		true,
 	}
 
-	RadiusPUObj = &TboxGameObj{
+	RadiusPU = &TboxObj{
 		&termbox.Cell{
 			Ch: 'Ⓡ',
 			Fg: termbox.ColorYellow,
@@ -76,35 +85,35 @@ var (
 	}
 )
 
-type TboxGameObj struct {
+type TboxObj struct {
 	*termbox.Cell
 	name        string
 	traversable bool
 }
 
-func (to *TboxGameObj) Draw(x, y int) {
+func (to *TboxObj) Draw(x, y int) {
 	termbox.SetCell(x*2, y, to.Ch, to.Fg, to.Bg)
 	termbox.SetCell(x*2+1, y, to.Ch, to.Fg, to.Bg)
 }
 
-func (t *TboxGameObj) Traversable() bool {
+func (t *TboxObj) Traversable() bool {
 	return t.traversable
 }
 
-func (t *TboxGameObj) GoString() string {
+func (t *TboxObj) GoString() string {
 	return t.name
 }
 
-type TboxPlayerObj struct {
-	name string
+type TboxPlayer struct {
+	Name string
 }
 
-func (to TboxPlayerObj) Draw(x, y int) {
+func (t TboxPlayer) Draw(x, y int) {
 	fg, bg := termbox.ColorWhite, termbox.ColorMagenta
-	termbox.SetCell(x*2, y, []rune(to.name)[0], fg, bg)
-	termbox.SetCell(x*2+1, y, []rune(to.name)[1], fg, bg)
+	termbox.SetCell(x*2, y, []rune(t.Name)[0], fg, bg)
+	termbox.SetCell(x*2+1, y, []rune(t.Name)[1], fg, bg)
 }
 
-func (t TboxPlayerObj) Traversable() bool {
+func (t TboxPlayer) Traversable() bool {
 	return true
 }
