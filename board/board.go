@@ -121,13 +121,13 @@ func (b Board) Draw(players map[*player.State]player.Player) {
 	termbox.Flush()
 }
 
-func (b Board) Clone() [][]cell.Cell {
-	clone := make([][]cell.Cell, len(b))
+func (b Board) Clone() [][]*cell.Exported {
+	clone := make([][]*cell.Exported, len(b))
 	for i := range clone {
-		clone[i] = make([]cell.Cell, len(b[0]))
+		clone[i] = make([]*cell.Exported, len(b[0]))
 	}
 	b.forEach(func(c *cell.Cell) {
-		clone[c.X][c.Y] = *cell.NewCell(c.Top(), c.X, c.Y)
+		clone[c.X][c.Y] = c.Export()
 	})
 	return clone
 }

@@ -100,7 +100,7 @@ func (t *TboxObj) Traversable() bool {
 	return t.traversable
 }
 
-func (t *TboxObj) GoString() string {
+func (t *TboxObj) String() string {
 	return t.name
 }
 
@@ -116,4 +116,8 @@ func (t TboxPlayer) Draw(x, y int) {
 
 func (t TboxPlayer) Traversable() bool {
 	return true
+}
+
+func (t *TboxPlayer) String() string {
+	return t.Name
 }

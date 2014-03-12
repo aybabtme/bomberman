@@ -12,7 +12,7 @@ type State struct {
 	X, Y, LastX, LastY        int
 	Bombs, MaxBomb, MaxRadius int
 	Alive                     bool
-	CurBoard                  [][]cell.Cell
+	Board                     [][]*cell.Exported
 	GameObject                cell.GameObject
 }
 

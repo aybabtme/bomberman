@@ -9,8 +9,10 @@ import (
 	"github.com/aybabtme/bomberman/player/ai"
 	"github.com/aybabtme/bomberman/player/input"
 	"github.com/aybabtme/bomberman/scheduler"
+	websocket "github.com/aybabtme/bomberweb/player"
 	"github.com/nsf/termbox-go"
 	"math/rand"
+	"net/http"
 	"runtime"
 	"time"
 )
@@ -95,6 +97,9 @@ var (
 )
 
 func main() {
+
+	mux := http.NewServeMux()
+
 	log.Infof("Starting Bomberman")
 
 	game := game.NewGame(TurnDuration, TotalBombPU, TotalRadiusPU)
@@ -107,15 +112,18 @@ func main() {
 		localState:         localPlayer,
 		&rightBottomCorner: ai.NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
 		&leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner:    ai.NewImmobilePlayer(rightTopCorner),
+		&rightTopCorner:    websocket.NewWebsocketPlayer(rightTopCorner, mux, log),
 	}
 
+	go func() {
+		log.Fatalf(http.ListenAndServe(":3333", mux).Error())
+	}()
 	runtime.GOMAXPROCS(1 + len(game.Players))
 
 	log.Debugf("Setup board.")
 	board := board.SetupBoard(game, MaxX+2, MaxY+2, RockFreeArea, RockDensity)
 	for pState := range game.Players {
-		pState.CurBoard = board.Clone()
+		pState.Board = board.Clone()
 	}
 
 	log.Debugf("Initializing termbox.")
@@ -248,7 +256,7 @@ func applyPlayerMoves(g *game.Game, board board.Board) {
 
 func updatePlayers(game *game.Game, board board.Board) {
 	for pState, player := range game.Players {
-		pState.CurBoard = board.Clone()
+		pState.Board = board.Clone()
 		pState.Turn = game.Turn()
 		select {
 		case player.Update() <- *pState:

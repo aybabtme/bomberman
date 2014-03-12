@@ -1,15 +1,23 @@
 package cell
 
 type GameObject interface {
+	String() string
 	Draw(x, y int)
 	Traversable() bool
+}
+
+type Exported struct {
+	Name string
+	X    int
+	Y    int
 }
 
 // Cell is a cell on the board. A cell can have many z layers.
 type Cell struct {
 	base    GameObject
 	zLayers []GameObject
-	X, Y    int
+	X       int
+	Y       int
 }
 
 // NewCell creates a cell with base as z layer 0.
@@ -95,4 +103,12 @@ func (c *Cell) Layer(z int) GameObject {
 // Depth gives the depth of the z layer, including the base layer.
 func (c *Cell) Depth() int {
 	return 1 + len(c.zLayers)
+}
+
+func (c *Cell) Export() *Exported {
+	return &Exported{
+		Name: c.Top().String(),
+		X:    c.X,
+		Y:    c.Y,
+	}
 }
