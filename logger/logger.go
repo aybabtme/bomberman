@@ -27,6 +27,7 @@ func New(prefix, filename string, lvl Level) *Logger {
 	if err != nil {
 		panic(fmt.Sprintf("creating log file '%s', %v", filename, err))
 	}
+	log.SetOutput(fd)
 	return &Logger{
 		l:   log.New(fd, prefix, log.Lmicroseconds),
 		lvl: lvl,

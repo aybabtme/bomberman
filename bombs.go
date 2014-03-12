@@ -24,12 +24,9 @@ func placeBomb(board board.Board, game *game.Game, placerState *player.State) {
 	}
 
 	placerState.Bombs++
-
 	x, y := placerState.X, placerState.Y
 	// radius is snapshot'd at this point in time
 	radius := placerState.MaxRadius
-
-	board[x][y].Push(objects.Bomb)
 
 	replenishBomb := func(turn int) error {
 		if placerState.Bombs > 0 {
@@ -68,12 +65,25 @@ func placeBomb(board board.Board, game *game.Game, placerState *player.State) {
 		return nil
 	}
 
-	log.Debugf("[%s] Registering bomb explosion.", placer.Name())
+	doPlaceBomb := func(turn int) error {
+
+		board[x][y].Push(objects.Bomb)
+
+		log.Debugf("[%s] Registering bomb explosion.", placer.Name())
+		game.Schedule.Register(&BomberAction{
+			name:     fmt.Sprintf("%s.doExplosion", placer.Name()),
+			duration: 1,
+			doTurn:   doExplosion,
+		}, TurnsToExplode)
+		return nil
+	}
+
 	game.Schedule.Register(&BomberAction{
-		name:     fmt.Sprintf("%s.doExplosion", placer.Name()),
+		name:     fmt.Sprintf("%s.placeBomb", placer.Name()),
 		duration: 1,
-		doTurn:   doExplosion,
-	}, TurnsToExplode)
+		doTurn:   doPlaceBomb,
+	}, 1)
+
 }
 
 func explode(game *game.Game, board board.Board, explodeX, explodeY, radius int) {

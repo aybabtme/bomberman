@@ -14,6 +14,7 @@ type State struct {
 	Alive                     bool
 	Board                     [][]*cell.Exported
 	GameObject                cell.GameObject
+	Message                   string
 }
 
 type Move string

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/aybabtme/bomberman/board"
 	"github.com/aybabtme/bomberman/game"
 	"github.com/aybabtme/bomberman/logger"
@@ -9,7 +10,7 @@ import (
 	"github.com/aybabtme/bomberman/player/ai"
 	"github.com/aybabtme/bomberman/player/input"
 	"github.com/aybabtme/bomberman/scheduler"
-	websocket "github.com/aybabtme/bomberweb/player"
+	bomberweb "github.com/aybabtme/bomberweb/player"
 	"github.com/nsf/termbox-go"
 	"math/rand"
 	"net/http"
@@ -40,10 +41,13 @@ const (
 	DefaultMaxBomb    = 3
 	DefaultBombRadius = 3
 
-	TurnDuration     = time.Millisecond * 10
-	TurnsToFlamout   = 70
-	TurnsToReplenish = 250
-	TurnsToExplode   = 200
+	TurnDuration = time.Millisecond * 33
+
+	baseline = time.Millisecond * 10
+
+	TurnsToFlamout   = int((70 * baseline) / TurnDuration)
+	TurnsToReplenish = int((250 * baseline) / TurnDuration)
+	TurnsToExplode   = int((200 * baseline) / TurnDuration)
 )
 
 var (
@@ -112,7 +116,7 @@ func main() {
 		localState:         localPlayer,
 		&rightBottomCorner: ai.NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
 		&leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner:    websocket.NewWebsocketPlayer(rightTopCorner, mux, log),
+		&rightTopCorner:    bomberweb.NewWebsocketPlayer(rightTopCorner, mux, log),
 	}
 
 	go func() {
@@ -305,28 +309,39 @@ func movePlayer(g *game.Game, board board.Board, pState *player.State, action pl
 		return
 	}
 
-	if board[nextX][nextY].Top() == objects.Flame {
-		pState.Alive = false
-		log.Infof("[%s] Died moving into flame.", pState.Name)
-		cell := board[pState.X][pState.Y]
+	doMove := func(turn int) error {
+		if board[nextX][nextY].Top() == objects.Flame {
+			pState.Alive = false
+			log.Infof("[%s] Died moving into flame.", pState.Name)
+			cell := board[pState.X][pState.Y]
+			if !cell.Remove(pState.GameObject) {
+				log.Panicf("[%s] player not found at (%d, %d), cell=%#v",
+					pState.Name, pState.X, pState.Y, cell)
+			}
+			return nil
+		}
+
+		pState.LastX, pState.LastY = pState.X, pState.Y
+		pState.X, pState.Y = nextX, nextY
+
+		pickPowerUps(board, pState, nextX, nextY)
+
+		cell := board[pState.LastX][pState.LastY]
 		if !cell.Remove(pState.GameObject) {
 			log.Panicf("[%s] player not found at (%d, %d), cell=%#v",
 				pState.Name, pState.X, pState.Y, cell)
 		}
-		return
+		board[nextX][nextY].Push(pState.GameObject)
+
+		return nil
 	}
 
-	pState.LastX, pState.LastY = pState.X, pState.Y
-	pState.X, pState.Y = nextX, nextY
+	g.Schedule.Register(&BomberAction{
+		name:     fmt.Sprintf("%s.moving(%#v)", pState.Name, action),
+		duration: 1,
+		doTurn:   doMove,
+	}, 1)
 
-	pickPowerUps(board, pState, nextX, nextY)
-
-	cell := board[pState.LastX][pState.LastY]
-	if !cell.Remove(pState.GameObject) {
-		log.Panicf("[%s] player not found at (%d, %d), cell=%#v",
-			pState.Name, pState.X, pState.Y, cell)
-	}
-	board[nextX][nextY].Push(pState.GameObject)
 }
 
 func pickPowerUps(board board.Board, pState *player.State, x, y int) {
