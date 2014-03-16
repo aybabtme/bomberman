@@ -8,8 +8,6 @@ type GameObject interface {
 
 type Exported struct {
 	Name string
-	X    int
-	Y    int
 }
 
 // Cell is a cell on the board. A cell can have many z layers.
@@ -108,7 +106,5 @@ func (c *Cell) Depth() int {
 func (c *Cell) Export() *Exported {
 	return &Exported{
 		Name: c.Top().String(),
-		X:    c.X,
-		Y:    c.Y,
 	}
 }

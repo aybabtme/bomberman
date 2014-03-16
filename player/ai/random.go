@@ -36,6 +36,7 @@ func NewRandomPlayer(state player.State, seed int64) player.Player {
 				m = player.PutBomb
 			default:
 				time.Sleep(time.Duration(n) * state.TurnDuration)
+				continue
 			}
 			r.outMove <- m
 		}

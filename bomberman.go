@@ -7,9 +7,9 @@ import (
 	"github.com/aybabtme/bomberman/logger"
 	"github.com/aybabtme/bomberman/objects"
 	"github.com/aybabtme/bomberman/player"
-	"github.com/aybabtme/bomberman/player/ai"
 	"github.com/aybabtme/bomberman/player/input"
 	"github.com/aybabtme/bomberman/scheduler"
+	"github.com/aybabtme/bombertcp"
 	bomberweb "github.com/aybabtme/bomberweb/player"
 	"github.com/nsf/termbox-go"
 	"math/rand"
@@ -56,47 +56,59 @@ var (
 	log = logger.New("", "bomb.log", LogLevel)
 
 	leftTopCorner = player.State{
-		Name:       "p1",
-		X:          MinX,
-		Y:          MinY,
-		Bombs:      0,
-		MaxBomb:    DefaultMaxBomb,
-		MaxRadius:  DefaultBombRadius,
-		Alive:      true,
-		GameObject: &objects.TboxPlayer{"p1"},
+		Name:         "p1",
+		X:            MinX,
+		Y:            MinY,
+		LastX:        -1,
+		LastY:        -1,
+		TurnDuration: TurnDuration,
+		Bombs:        0,
+		MaxBomb:      DefaultMaxBomb,
+		MaxRadius:    DefaultBombRadius,
+		Alive:        true,
+		GameObject:   &objects.TboxPlayer{"p1"},
 	}
 
 	rightBottomCorner = player.State{
-		Name:       "p2",
-		X:          MaxX,
-		Y:          MaxY,
-		Bombs:      0,
-		MaxBomb:    DefaultMaxBomb,
-		MaxRadius:  DefaultBombRadius,
-		Alive:      true,
-		GameObject: &objects.TboxPlayer{"p2"},
+		Name:         "p2",
+		X:            MaxX,
+		Y:            MaxY,
+		LastX:        -1,
+		LastY:        -1,
+		TurnDuration: TurnDuration,
+		Bombs:        0,
+		MaxBomb:      DefaultMaxBomb,
+		MaxRadius:    DefaultBombRadius,
+		Alive:        true,
+		GameObject:   &objects.TboxPlayer{"p2"},
 	}
 
 	leftBottomCorner = player.State{
-		Name:       "p3",
-		X:          MinX,
-		Y:          MaxY,
-		Bombs:      0,
-		MaxBomb:    DefaultMaxBomb,
-		MaxRadius:  DefaultBombRadius,
-		Alive:      true,
-		GameObject: &objects.TboxPlayer{"p3"},
+		Name:         "p3",
+		X:            MinX,
+		Y:            MaxY,
+		LastX:        -1,
+		LastY:        -1,
+		TurnDuration: TurnDuration,
+		Bombs:        0,
+		MaxBomb:      DefaultMaxBomb,
+		MaxRadius:    DefaultBombRadius,
+		Alive:        true,
+		GameObject:   &objects.TboxPlayer{"p3"},
 	}
 
 	rightTopCorner = player.State{
-		Name:       "p4",
-		X:          MaxX,
-		Y:          MinY,
-		Bombs:      0,
-		MaxBomb:    DefaultMaxBomb,
-		MaxRadius:  DefaultBombRadius,
-		Alive:      true,
-		GameObject: &objects.TboxPlayer{"p4"},
+		Name:         "p4",
+		X:            MaxX,
+		Y:            MinY,
+		LastX:        -1,
+		LastY:        -1,
+		TurnDuration: TurnDuration,
+		Bombs:        0,
+		MaxBomb:      DefaultMaxBomb,
+		MaxRadius:    DefaultBombRadius,
+		Alive:        true,
+		GameObject:   &objects.TboxPlayer{"p4"},
 	}
 )
 
@@ -114,9 +126,9 @@ func main() {
 
 	game.Players = map[*player.State]player.Player{
 		localState:         localPlayer,
-		&rightBottomCorner: ai.NewRandomPlayer(rightBottomCorner, time.Now().UnixNano()),
-		&leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner:    bomberweb.NewWebsocketPlayer(rightTopCorner, mux, log),
+		&rightBottomCorner: bombertcp.NewTcpPlayer(rightBottomCorner, "0.0.0.0:40000", log),
+		// &leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
+		&rightTopCorner: bomberweb.NewWebsocketPlayer(rightTopCorner, mux, log),
 	}
 
 	go func() {

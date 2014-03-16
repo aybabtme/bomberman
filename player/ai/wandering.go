@@ -34,6 +34,7 @@ func NewWanderingPlayer(state player.State, seed int64) *WanderingPlayer {
 				m = player.Right
 			default:
 				time.Sleep(time.Duration(n) * state.TurnDuration)
+				continue
 			}
 			w.outMove <- m
 		}
