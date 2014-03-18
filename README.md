@@ -14,6 +14,7 @@
   * Sample [websocket](https://github.com/aybabtme/bomberweb) based UI/client.
 * Real clients:
   * Python client: https://github.com/uiri/bombermanpy.
+  * Java client: https://github.com/aybabtme/bombjava.
   * ... make your own client!
 
 ## Making your own client.
