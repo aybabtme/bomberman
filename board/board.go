@@ -66,20 +66,23 @@ func (b Board) setupMap() (free int) {
 }
 
 func (b Board) setupRocks(freeCells int, densityPercent float64) int {
-	needRock := float64(freeCells) * densityPercent
+	needRock := int(float64(freeCells) * densityPercent)
 	rockPlaced := 0
-	rockProb := func(rockLeft, freeCell float64) float64 {
+	rockProb := func(rockLeft, freeCell int) float64 {
 		return float64(rockLeft) / float64(freeCell)
 	}
 
 	groundTest := func(c *cell.Cell) bool { return c.Top() == objects.Ground }
 
 	b.filter(groundTest, func(c *cell.Cell) {
-		if rand.Float64() < rockProb(needRock, float64(freeCells)) {
+		prob := rockProb(needRock, freeCells)
+		roll := rand.Float64()
+		if roll < prob {
 			needRock--
 			rockPlaced++
 			c.Push(objects.Rock)
 		}
+		freeCells--
 	})
 	return rockPlaced
 }

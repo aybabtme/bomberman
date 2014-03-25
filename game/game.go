@@ -34,14 +34,18 @@ func NewGame(turnDuration time.Duration, totalBombs, totalRadius int) *Game {
 }
 
 func (g *Game) TryPutRadiusPU(c *cell.Cell, rocksToUse int) {
-	if g.rnd.Float32() < float32(g.radiusPULeft)/float32(rocksToUse) {
+	prob := float32(g.radiusPULeft) / float32(rocksToUse)
+	roll := g.rnd.Float32()
+	if roll < prob {
 		g.radiusPULeft--
 		c.Push(objects.RadiusPU)
 	}
 }
 
 func (g *Game) TryPutBombPU(c *cell.Cell, rocksToUse int) {
-	if g.rnd.Float32() < float32(g.bombPULeft)/float32(rocksToUse) {
+	prob := float32(g.bombPULeft) / float32(rocksToUse)
+	roll := g.rnd.Float32()
+	if roll < prob {
 		g.bombPULeft--
 		c.Push(objects.BombPU)
 	}
