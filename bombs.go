@@ -127,6 +127,7 @@ func removeFlame(board board.Board, x, y, radius int) {
 		}
 		if c.Top() == objects.Rock {
 			c.Pop()
+			return false
 		}
 		return true
 	})
