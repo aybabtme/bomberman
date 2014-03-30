@@ -10,10 +10,8 @@ import (
 	"github.com/aybabtme/bomberman/player/input"
 	"github.com/aybabtme/bomberman/scheduler"
 	"github.com/aybabtme/bombertcp"
-	bomberweb "github.com/aybabtme/bomberweb/player"
 	"github.com/nsf/termbox-go"
 	"math/rand"
-	"net/http"
 	"runtime"
 	"time"
 )
@@ -30,7 +28,7 @@ const (
 )
 
 const (
-	LogLevel = logger.Debug
+	LogLevel = logger.Info
 
 	RockFreeArea = 1
 	RockDensity  = 0.50
@@ -41,13 +39,11 @@ const (
 	DefaultMaxBomb    = 3
 	DefaultBombRadius = 3
 
-	TurnDuration = time.Millisecond * 33
+	TurnDuration = time.Millisecond * 200
 
-	baseline = time.Millisecond * 10
-
-	TurnsToFlamout   = int((70 * baseline) / TurnDuration)
-	TurnsToReplenish = int((250 * baseline) / TurnDuration)
-	TurnsToExplode   = int((200 * baseline) / TurnDuration)
+	TurnsToFlamout   = 3
+	TurnsToReplenish = 12
+	TurnsToExplode   = 10
 )
 
 var (
@@ -114,9 +110,11 @@ var (
 
 func main() {
 
-	mux := http.NewServeMux()
-
 	log.Infof("Starting Bomberman")
+
+	log.Infof("TurnsToFlamout=%d", TurnsToFlamout)
+	log.Infof("TurnsToReplenish=%d", TurnsToReplenish)
+	log.Infof("TurnsToExplode=%d", TurnsToExplode)
 
 	game := game.NewGame(TurnDuration, TotalBombPU, TotalRadiusPU)
 
@@ -127,13 +125,8 @@ func main() {
 	game.Players = map[*player.State]player.Player{
 		localState:         localPlayer,
 		&rightBottomCorner: bombertcp.NewTcpPlayer(rightBottomCorner, "0.0.0.0:40000", log),
-		// &leftBottomCorner:  ai.NewWanderingPlayer(leftBottomCorner, time.Now().UnixNano()),
-		&rightTopCorner: bomberweb.NewWebsocketPlayer(rightTopCorner, mux, log),
 	}
 
-	go func() {
-		log.Fatalf(http.ListenAndServe(":3333", mux).Error())
-	}()
 	runtime.GOMAXPROCS(1 + len(game.Players))
 
 	log.Debugf("Setup board.")
