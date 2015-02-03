@@ -81,7 +81,7 @@ func (s *Scheduler) DoTurn(eachAction func(a Action, delta int) error) error {
 			heap.Push(s.events, ev)
 		}
 	}
-	return nil
+	return err
 }
 
 // Action takes place at a time for a duration
